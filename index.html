@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Typing Pro</title>
+<style>
+:root{--bg:#f4f5fb;--card:#fff;--tx:#1b1f2a;--mu:#6b7280;--ac:#4f46e5;--ok:#16a34a;--bad:#dc2626;--bd:#e3e5ee;--cur:#c7d2fe;--badbg:#fee2e2}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#0f1220;--card:#1a1e30;--tx:#eceefa;--mu:#9aa0b8;--ac:#818cf8;--ok:#4ade80;--bad:#f87171;--bd:#2c3150;--cur:#3b3f7a;--badbg:#431a1f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:20px 16px 40px}
+h1{margin:0;font-size:26px}h1 span{color:var(--ac)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:18px;margin-top:14px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.grow{flex:1;min-width:180px}
+input,select,textarea.f{width:100%;padding:11px 12px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font:inherit}
+label{font-size:13px;color:var(--mu);display:block;margin-bottom:4px}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:11px 18px;background:var(--ac);color:#fff;font-weight:600}
+button.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}
+.mu{color:var(--mu);font-size:14px}
+.pl{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:640px){.pl{grid-template-columns:1fr}}
+.p{background:var(--card);border:2px solid var(--bd);border-radius:14px;padding:14px}.p.me{border-color:var(--ac)}
+.bar{height:10px;border-radius:6px;background:var(--bd);overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--ac);transition:width .25s}
+.st{display:flex;gap:16px;flex-wrap:wrap;font-size:14px}.st b{font-size:20px}
+.timer{font-size:44px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums;margin:8px 0}
+.txt{font:22px/1.8 Georgia,"Times New Roman",serif;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:18px;margin-top:12px;user-select:none;max-height:300px;overflow:auto}
+.txt .ok{color:var(--ok)}.txt .bad{background:var(--badbg);color:var(--bad)}.txt .cur{background:var(--cur);border-radius:3px}
+textarea.in{width:100%;height:90px;margin-top:12px;padding:12px;border-radius:12px;border:2px solid var(--ac);background:var(--card);color:var(--tx);font:18px/1.5 inherit;resize:none}
+.win{font-size:28px;font-weight:800;text-align:center;margin:6px 0 14px}
+table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:center;border-bottom:1px solid var(--bd)}
+.tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;background:var(--bd)}
+.big{font-size:60px;text-align:center}
+</style></head><body><div class="wrap">
+<div class="row" style="justify-content:space-between"><h1>⌨️ Typing <span>Pro</span></h1><div><span id="cn" class="mu"></span> <span id="nav"></span></div></div>
+<div id="app"></div></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LS={get(k){try{return localStorage.getItem(k)||''}catch(e){return''}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+let ws,S=null,view='home',name=LS.get('tp_name'),dur=2,err='',A=null,ta=null,focused=false;
+
+function connect(){
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);
+  ws.onopen=()=>{$('#cn').textContent=''};
+  ws.onclose=()=>{$('#cn').textContent='Mất kết nối, đang thử lại…';view='home';S=null;ta=null;render();setTimeout(connect,1500)};
+  ws.onmessage=e=>on(JSON.parse(e.data));
+}
+const tx=o=>ws.readyState===1&&ws.send(JSON.stringify(o));
+function on(m){
+  if(m.t==='hello'){dur=m.duration;if(view==='home')render()}
+  else if(m.t==='state'){S=m;S.t0=performance.now();view=m.status==='waiting'?'wait':'game';render()}
+  else if(m.t==='resync'){if(ta)ta.value=m.text}
+  else if(m.t==='aborted'){err='Đối thủ đã thoát trước khi bắt đầu.';reset()}
+  else if(m.t==='adminfail'){alert('Sai mật khẩu giám thị')}
+  else if(m.t==='admin'){A=m;if(view!=='game'&&view!=='wait'){view='admin';render()}}
+}
+function reset(){S=null;ta=null;focused=false;view='home';render()}
+function leave(){tx({t:'leave'});err='';reset()}
+function myName(){name=($('#nm')?.value||name||'').trim()||'Thí sinh';LS.set('tp_name',name);return name}
+function join(solo){tx({t:'join',name:myName(),code:solo?'':$('#cd').value,solo})}
+function adminLogin(){const p=prompt('Mật khẩu giám thị:');if(p)tx({t:'admin',pass:p})}
+
+function render(){
+  const a=$('#app');
+  $('#nav').innerHTML=view==='home'?'<button class="g" onclick="adminLogin()">🛠 Giám thị</button>':view==='admin'?'<button class="g" onclick="A=null;reset()">← Trang chủ</button>':'';
+  if(view==='home')a.innerHTML=`<div class="card"><h2 style="margin-top:0">Thi gõ đối kháng 1–1</h2>
+  <p class="mu">Hai người vào cùng một phòng, gõ cùng một đoạn tiếng Việt. Điểm = tốc độ (WPM) × độ chính xác². Thời gian mỗi lượt: <b>${dur} phút</b>.</p>
+  ${err?`<p style="color:var(--bad)">${esc(err)}</p>`:''}
+  <div class="row"><div class="grow"><label>Họ tên / MSSV</label><input id="nm" value="${esc(name)}" maxlength="30" placeholder="Nguyễn Văn A"></div>
+  <div class="grow"><label>Mã phòng (tuỳ chọn, để ghép đúng cặp)</label><input id="cd" maxlength="20" placeholder="Để trống = ghép tự động"></div></div>
+  <div class="row" style="margin-top:14px"><button onclick="join(false)">⚔️ Vào phòng thi</button><button class="g" onclick="join(true)">Luyện tập một mình</button></div></div>
+  <div class="card mu">Giữ đúng dấu tiếng Việt, có thể dùng Backspace để sửa lỗi (chữ sai tô đỏ). Dán văn bản bị chặn.</div>`;
+  else if(view==='wait')a.innerHTML=`<div class="card" style="text-align:center"><div class="big">⏳</div><h2>Đang chờ đối thủ…</h2><p class="mu">Mã phòng: <b>${esc(S.code)}</b>. Người thứ hai nhập cùng mã (hoặc để trống mã) sẽ vào phòng này.</p><button class="g" onclick="leave()">Hủy</button></div>`;
+  else if(view==='game'){if(!ta)build(a);update()}
+  else if(view==='admin')adminView(a);
+}
+function build(a){
+  a.innerHTML=`<div id="tm" class="timer"></div><div class="pl" id="cards"></div><div id="txt" class="txt"></div>
+  <textarea id="ta" class="in" disabled autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Bắt đầu gõ khi đếm ngược kết thúc…"></textarea><div id="res"></div>`;
+  ta=$('#ta');let comp=false;
+  const push=()=>{if(S&&S.status==='running'){tx({t:'typed',text:ta.value});paint()}else ta.value=''};
+  ta.addEventListener('compositionstart',()=>comp=true);
+  ta.addEventListener('compositionend',()=>{comp=false;push()});
+  ta.addEventListener('input',()=>{if(!comp)push()});
+  ta.addEventListener('paste',e=>e.preventDefault());ta.addEventListener('drop',e=>e.preventDefault());
+  setInterval(()=>{if(view==='game')update()},250);
+}
+const fmt=ms=>{const s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
+const pct=(a,b)=>b?Math.min(100,100*a/b):0;
+function card(p,me){return`<div class="p ${me?'me':''}"><div class="row" style="justify-content:space-between"><b>${esc(p.name)}${me?' (bạn)':''}</b>${p.done?'<span class="tag">Hoàn tất</span>':''}</div>
+<div class="bar"><i style="width:${pct(p.correct,p.len)}%"></i></div>
+<div class="st"><div>WPM<br><b>${Math.round(p.wpm)}</b></div><div>Chính xác<br><b>${p.acc}%</b></div><div>Điểm<br><b>${p.score}</b></div></div></div>`}
+function paint(){
+  const T=S.text,t=ta.value.normalize('NFC');let h='';
+  for(let i=0;i<T.length;i++){const c=T[i],x=t[i];h+=`<span class="${x==null?(i===t.length&&S.status==='running'?'cur':''):x===T[i]?'ok':'bad'}">${esc(c)}</span>`}
+  const el=$('#txt');el.innerHTML=h||'<span class="mu">Đoạn văn sẽ hiện khi bắt đầu…</span>';
+  const c=el.querySelector('.cur');if(c)el.scrollTop=Math.max(0,c.offsetTop-110);
+}
+function update(){
+  if(!S||!ta)return;const el=performance.now()-S.t0,st=S.status,me=S.me;
+  $('#tm').textContent=st==='countdown'?'Chuẩn bị… '+Math.max(1,Math.ceil((S.toStart-el)/1000)):st==='running'?fmt(S.toEnd-el-300):'Hết giờ';
+  $('#cards').innerHTML=S.players.map((p,i)=>card(p,i===me)).join('');
+  const canType=st==='running'&&!S.players[me].done;
+  ta.disabled=!canType;if(canType&&!focused){focused=true;ta.focus()}
+  if(S.text)paint();else paint0();
+  if(st==='finished'&&!$('#res').innerHTML)result();
+}
+function paint0(){$('#txt').innerHTML='<span class="mu">Đoạn văn sẽ hiện khi bắt đầu…</span>'}
+function result(){
+  const w=S.result.winner,P=S.players;
+  const head=S.solo?'Kết quả luyện tập':w<0?'🤝 Hòa!':'🏆 '+esc(P[w].name)+(w===S.me?' (bạn)':'')+' chiến thắng!';
+  $('#res').innerHTML=`<div class="card"><div class="win">${head}</div><table><tr><th>Thí sinh</th><th>WPM</th><th>Chính xác</th><th>Ký tự đúng</th><th>Điểm</th></tr>
+  ${P.map(p=>`<tr><td>${esc(p.name)}</td><td>${p.wpm}</td><td>${p.acc}%</td><td>${p.correct}/${p.len}</td><td><b>${p.score}</b></td></tr>`).join('')}</table>
+  <div class="row" style="margin-top:14px;justify-content:center"><button onclick="leave()">Về trang chủ</button></div></div>`;
+  $('#res').scrollIntoView({behavior:'smooth'});
+}
+
+function adminView(a){
+  const txt=A.cfg.texts.map(t=>t.title+'\n'+t.text).join('\n---\n');
+  const H=A.history.slice().reverse();
+  a.innerHTML=`<div class="card"><h2 style="margin-top:0">Cấu hình cuộc thi</h2>
+  <label>Thời gian mỗi lượt</label><select id="du" style="max-width:200px">${[1,2,3,4,5].map(m=>`<option value="${m}" ${m===A.cfg.duration?'selected':''}>${m} phút</option>`).join('')}</select>
+  <label style="margin-top:12px">Đoạn văn (dòng 1 là tiêu đề, các dòng sau là nội dung; ngăn cách các đoạn bằng dòng ---)</label>
+  <textarea id="tx" class="f" rows="10">${esc(txt)}</textarea>
+  <div class="row" style="margin-top:12px"><button onclick="saveCfg()">Lưu cấu hình</button><span id="sv" class="mu"></span></div></div>
+  <div class="card"><h2 style="margin-top:0">Phòng đang hoạt động</h2>${A.live.length?`<table>${A.live.map(r=>`<tr><td>${r.names.map(esc).join(' vs ')||'…'}</td><td>${{waiting:'Đang chờ',countdown:'Chuẩn bị',running:'Đang thi'}[r.status]||r.status}</td></tr>`).join('')}</table>`:'<p class="mu">Không có phòng nào.</p>'}</div>
+  <div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Kết quả các cặp đã thi</h2><button class="g" onclick="csv()">Xuất CSV</button></div>
+  ${H.length?`<table><tr><th>Cặp thi</th><th>Điểm</th><th>WPM</th><th>Chính xác</th><th>Thắng</th></tr>${H.map(h=>{const[a,b]=h.players;return`<tr><td>${esc(a.name)} vs ${esc(b.name)}</td><td>${a.score} – ${b.score}</td><td>${a.wpm} – ${b.wpm}</td><td>${a.acc}% – ${b.acc}%</td><td>${h.winner<0?'Hòa':esc(h.players[h.winner].name)}</td></tr>`}).join('')}</table>`:'<p class="mu">Chưa có kết quả.</p>'}</div>`;
+}
+function saveCfg(){
+  const texts=$('#tx').value.split(/\n---\n/).map(b=>{const l=b.trim().split('\n');return{title:l[0].trim(),text:l.slice(1).join(' ').trim()}}).filter(t=>t.text);
+  if(!texts.length){$('#sv').textContent='Cần ít nhất 1 đoạn văn.';return}
+  tx({t:'setcfg',duration:+$('#du').value,texts});$('#sv').textContent='Đã lưu ✔';
+}
+function csv(){
+  const q=v=>'"'+String(v).replace(/"/g,'""')+'"',L=['Thí sinh 1,Điểm 1,WPM 1,Chính xác 1,Thí sinh 2,Điểm 2,WPM 2,Chính xác 2,Người thắng'];
+  A.history.forEach(h=>{const[a,b]=h.players;L.push([a.name,a.score,a.wpm,a.acc,b.name,b.score,b.wpm,b.acc,h.winner<0?'Hòa':h.players[h.winner].name].map(q).join(','))});
+  const u=URL.createObjectURL(new Blob(['\ufeff'+L.join('\n')],{type:'text/csv'})),l=document.createElement('a');
+  l.href=u;l.download='ket-qua-typing-pro.csv';l.click();URL.revokeObjectURL(u);
+}
+render();connect();
+</script></body></html>

@@ -10,6 +10,32 @@ let cfg = { duration: 2, texts: [
 ] };
 try { cfg = JSON.parse(fs.readFileSync(CF, 'utf8')); } catch (e) {}
 
+// Danh bạ sinh viên: MSSV (duy nhất) -> họ tên
+const STF = path.join(__dirname, 'students.json');
+let ST = {};
+try { ST = JSON.parse(fs.readFileSync(STF, 'utf8')); } catch (e) {}
+const saveST = () => { try { fs.writeFileSync(STF, JSON.stringify(ST)); } catch (e) {} };
+const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/\s+/g, ' ').trim();
+const active = new Map(); // MSSV đang được sử dụng -> ws
+const releaseId = ws => { if (ws.mssv && active.get(ws.mssv) === ws) active.delete(ws.mssv); };
+
+// Bảng xếp hạng (điểm cao nhất của mỗi thí sinh theo từng loại thời gian)
+const LBF = path.join(__dirname, 'leaderboard.json');
+let LB = [];
+try { LB = JSON.parse(fs.readFileSync(LBF, 'utf8')); } catch (e) {}
+const saveLB = () => { try { fs.writeFileSync(LBF, JSON.stringify(LB)); } catch (e) {} };
+function recordLB(x, dur) {
+  if (!x.score || !x.mssv) return;
+  const e = LB.find(o => o.dur === dur && o.mssv === x.mssv);
+  const row = { mssv: x.mssv, name: x.name, dur, score: x.score, wpm: x.wpm, acc: x.acc, at: Date.now() };
+  if (!e) LB.push(row); else if (x.score > e.score || (x.score === e.score && x.acc > e.acc)) Object.assign(e, row);
+}
+function lbData() {
+  const o = {};
+  for (let d = 1; d <= 5; d++) o[d] = LB.filter(e => e.dur === d && e.mssv).sort((a, b) => b.score - a.score || b.acc - a.acc || a.at - b.at).slice(0, 50);
+  return o;
+}
+
 const server = http.createServer((req, res) => {
   fs.readFile(path.join(__dirname, 'public', 'index.html'), (e, d) => {
     if (e) { res.writeHead(500); return res.end('Lỗi'); }
@@ -26,7 +52,7 @@ function stat(p, r, now) {
   for (let i = 0; i < t.length; i++) if (t[i] === T[i]) c++;
   const end = Math.min(p.doneAt || now, r.endAt, now), m = Math.max(0, end - r.startAt) / 60000;
   const wpm = m > 0.008 ? c / 5 / m : 0, acc = t.length ? 100 * c / t.length : 100;
-  return { name: p.name, correct: c, len: T.length, wpm: +wpm.toFixed(1), acc: +acc.toFixed(1), score: Math.round(wpm * (acc / 100) ** 2), done: !!p.doneAt };
+  return { name: p.name, mssv: p.mssv, correct: c, len: T.length, wpm: +wpm.toFixed(1), acc: +acc.toFixed(1), score: Math.round(wpm * (acc / 100) ** 2), done: !!p.doneAt };
 }
 function broadcast(r, extra) {
   const now = Date.now(), ps = r.players.map(p => stat(p, r, now));
@@ -38,7 +64,8 @@ function broadcast(r, extra) {
 }
 function pushAdmin() {
   const live = [...rooms.values()].map(r => ({ names: r.players.map(p => p.name), status: r.status }));
-  admins.forEach(ws => send(ws, { t: 'admin', cfg, live, history: history.slice(-200) }));
+  const students = Object.entries(ST).map(([mssv, v]) => ({ mssv, name: v.name }));
+  admins.forEach(ws => send(ws, { t: 'admin', cfg, live, students, history: history.slice(-200) }));
 }
 function start(r) {
   r.status = 'countdown'; const now = Date.now();
@@ -61,10 +88,13 @@ function finish(r) {
     if (r.players[1].left && !r.players[0].left) w = 0;
   }
   r.result = { winner: w };
+  if (!r.solo) { s.forEach(x => recordLB(x, r.dur)); saveLB(); }
   if (!r.solo) history.push({ at: Date.now(), players: s, winner: w });
+  r.players.forEach(p => releaseId(p.ws));
   broadcast(r); rooms.delete(r.id); pushAdmin();
 }
 function leaveRoom(ws) {
+  releaseId(ws);
   const r = ws.room; if (!r) return; ws.room = null;
   if (r.status === 'waiting') { rooms.delete(r.id); if (waiting.get(r.code) === r) waiting.delete(r.code); }
   else if (r.status === 'countdown') {
@@ -77,10 +107,18 @@ function leaveRoom(ws) {
   pushAdmin();
 }
 function join(ws, m) {
+  const mssv = String(m.mssv || '').trim().toUpperCase(), nm = String(m.name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  if (nm.length < 2) return send(ws, { t: 'joinerr', msg: 'Vui lòng nhập họ tên.' });
+  if (!/^[A-Z0-9]{5,15}$/.test(mssv)) return send(ws, { t: 'joinerr', msg: 'MSSV không hợp lệ (5–15 ký tự chữ hoặc số, ví dụ PH12345).' });
+  const st = ST[mssv];
+  if (st && norm(st.name) !== norm(nm)) return send(ws, { t: 'joinerr', msg: 'MSSV ' + mssv + ' đã được đăng ký với họ tên khác. Hãy nhập đúng họ tên đã dùng lần đầu (hoặc nhờ giám thị sửa).' });
+  const cur = active.get(mssv);
+  if (cur && cur !== ws && cur.readyState === 1) return send(ws, { t: 'joinerr', msg: 'MSSV này đang được sử dụng ở một thiết bị hoặc tab khác.' });
   leaveRoom(ws);
-  const name = String(m.name || 'Thí sinh').trim().slice(0, 30) || 'Thí sinh';
+  if (!st) { ST[mssv] = { name: nm, at: Date.now() }; saveST(); }
+  const name = ST[mssv].name; active.set(mssv, ws); ws.mssv = mssv;
   const code = String(m.code || 'auto').replace(/[^\w-]/g, '').slice(0, 20) || 'auto';
-  const p = { ws, name, typed: '' };
+  const p = { ws, name, mssv, typed: '' };
   if (m.solo) {
     const t = cfg.texts[Math.floor(Math.random() * cfg.texts.length)];
     const r = { id: ++seq, solo: true, text: t.text.normalize('NFC'), dur: cfg.duration, players: [p], status: 'waiting' };
@@ -102,6 +140,13 @@ wss.on('connection', ws => {
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
     if (m.t === 'join') join(ws, m);
     else if (m.t === 'leave') leaveRoom(ws);
+    else if (m.t === 'lb') send(ws, { t: 'lb', data: lbData() });
+    else if (m.t === 'delstudent' && admins.has(ws)) { const k = String(m.mssv); delete ST[k]; LB = LB.filter(e => e.mssv !== k); saveST(); saveLB(); pushAdmin(); }
+    else if (m.t === 'renstudent' && admins.has(ws)) {
+      const k = String(m.mssv), nn = String(m.name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      if (ST[k] && nn.length >= 2) { ST[k].name = nn; LB.forEach(e => { if (e.mssv === k) e.name = nn; }); saveST(); saveLB(); pushAdmin(); }
+    }
+    else if (m.t === 'resetlb' && admins.has(ws)) { LB = []; saveLB(); pushAdmin(); }
     else if (m.t === 'typed') {
       const r = ws.room; if (!r || r.status !== 'running') return;
       const p = r.players.find(x => x.ws === ws); if (p.doneAt) return;

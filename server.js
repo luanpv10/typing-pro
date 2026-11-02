@@ -45,14 +45,24 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server });
 const waiting = new Map(), rooms = new Map(), admins = new Set(), history = [];
 let seq = 0;
+const prep = t => String(t).normalize('NFC').replace(/\s+/g, ' ').trim();
 const send = (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 
+// Chấm điểm theo từ (giống Monkeytype / 10FastFingers): từ gõ sai chỉ mất điểm của chính từ đó,
+// không làm lệch các từ phía sau. Chỉ từ gõ đúng hoàn toàn mới tính vào tốc độ.
 function stat(p, r, now) {
-  const T = r.text, t = p.typed; let c = 0;
-  for (let i = 0; i < t.length; i++) if (t[i] === T[i]) c++;
+  const T = r.words, tw = p.typed.split(' ');
+  let c = 0, tot = 0;
+  tw.forEach((w, i) => {
+    const last = i === tw.length - 1, tg = T[i];
+    tot += w.length + (last ? 0 : 1);
+    if (tg === undefined || !w) return;
+    if (!last) { if (w === tg) c += w.length + 1; }
+    else if (tg.startsWith(w)) c += w.length;
+  });
   const end = Math.min(p.doneAt || now, r.endAt, now), m = Math.max(0, end - r.startAt) / 60000;
-  const wpm = m > 0.008 ? c / 5 / m : 0, acc = t.length ? 100 * c / t.length : 100;
-  return { name: p.name, mssv: p.mssv, correct: c, len: T.length, wpm: +wpm.toFixed(1), acc: +acc.toFixed(1), score: Math.round(wpm * (acc / 100) ** 2), done: !!p.doneAt };
+  const wpm = m > 0.008 ? c / 5 / m : 0, acc = tot ? 100 * c / tot : 100;
+  return { name: p.name, mssv: p.mssv, correct: c, len: r.text.length, wpm: +wpm.toFixed(1), acc: +acc.toFixed(1), score: Math.round(wpm * (acc / 100) ** 2), done: !!p.doneAt };
 }
 function specMsg(r, now, ps) {
   return { t: 'spec', id: r.id, status: r.status, solo: r.solo, dur: r.dur, players: ps, toStart: r.startAt ? r.startAt - now : 0, toEnd: r.endAt ? r.endAt - now : 0, result: r.result || null };
@@ -114,7 +124,7 @@ function leaveRoom(ws) {
 function join(ws, m) {
   const mssv = String(m.mssv || '').trim().toUpperCase(), nm = String(m.name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
   if (nm.length < 2) return send(ws, { t: 'joinerr', msg: 'Vui lòng nhập họ tên.' });
-  if (!/^[A-Z0-9]{5,15}$/.test(mssv)) return send(ws, { t: 'joinerr', msg: 'MSSV không hợp lệ (5–15 ký tự chữ hoặc số, ví dụ PH12345).' });
+  if (!/^[A-Z0-9]{5,15}$/.test(mssv)) return send(ws, { t: 'joinerr', msg: 'MSSV không hợp lệ (5–15 ký tự chữ hoặc số, ví dụ TH12345).' });
   const st = ST[mssv];
   if (st && norm(st.name) !== norm(nm)) return send(ws, { t: 'joinerr', msg: 'MSSV ' + mssv + ' đã được đăng ký với họ tên khác. Hãy nhập đúng họ tên đã dùng lần đầu (hoặc nhờ giám thị sửa).' });
   const cur = active.get(mssv);
@@ -126,7 +136,7 @@ function join(ws, m) {
   const p = { ws, name, mssv, typed: '' };
   if (m.solo) {
     const t = cfg.texts[Math.floor(Math.random() * cfg.texts.length)];
-    const r = { id: ++seq, solo: true, text: t.text.normalize('NFC'), dur: cfg.duration, players: [p], status: 'waiting' };
+    const r = { id: ++seq, solo: true, text: prep(t.text), words: prep(t.text).split(' '), dur: cfg.duration, players: [p], status: 'waiting' };
     rooms.set(r.id, r); ws.room = r; return start(r);
   }
   let r = waiting.get(code);
@@ -134,7 +144,7 @@ function join(ws, m) {
     waiting.delete(code); r.players.push(p); ws.room = r; start(r);
   } else {
     const t = cfg.texts[Math.floor(Math.random() * cfg.texts.length)];
-    r = { id: ++seq, code, solo: false, text: t.text.normalize('NFC'), dur: cfg.duration, players: [p], status: 'waiting' };
+    r = { id: ++seq, code, solo: false, text: prep(t.text), words: prep(t.text).split(' '), dur: cfg.duration, players: [p], status: 'waiting' };
     rooms.set(r.id, r); waiting.set(code, r); ws.room = r;
     send(ws, { t: 'state', status: 'waiting', code, me: 0, players: [{ name }], text: '' }); pushAdmin();
   }
@@ -162,9 +172,11 @@ wss.on('connection', ws => {
     else if (m.t === 'typed') {
       const r = ws.room; if (!r || r.status !== 'running') return;
       const p = r.players.find(x => x.ws === ws); if (p.doneAt) return;
-      const v = String(m.text || '').normalize('NFC').slice(0, r.text.length);
+      const v = String(m.text || '').normalize('NFC').replace(/\s+/g, ' ').replace(/^ /, '').slice(0, r.text.length + 40);
       if (v.length - p.typed.length > 12) return send(ws, { t: 'resync', text: p.typed }); // chặn dán văn bản
-      p.typed = v; if (v.length >= r.text.length) p.doneAt = Date.now();
+      p.typed = v;
+      const tw = v.split(' '); // hoàn thành khi từ cuối cùng được gõ đúng hoàn toàn
+      if (tw.length === r.words.length && tw[tw.length - 1] === r.words[r.words.length - 1]) p.doneAt = Date.now();
       broadcast(r); if (r.players.every(x => x.doneAt)) finish(r);
     } else if (m.t === 'admin') {
       if (m.pass === ADMIN_PASS) { admins.add(ws); pushAdmin(); } else send(ws, { t: 'adminfail' });

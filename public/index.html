@@ -57,7 +57,8 @@ function on(m){
   else if(m.t==='resync'){if(ta)ta.value=m.text}
   else if(m.t==='aborted'){err='Đối thủ đã thoát trước khi bắt đầu.';reset()}
   else if(m.t==='adminfail'){alert('Sai mật khẩu giám thị')}
-  else if(m.t==='admin'){A=m;if(view==='home'){view='admin';render()}else if(view==='admin')render()}
+  else if(m.t==='admin'){A=m;if(view==='home'){view='admin';render()}else if(view==='admin'&&!(document.activeElement&&document.activeElement.id==='tx'))render()}
+  else if(m.t==='backup')saveBackup(m.data)
   else if(m.t==='spec'){SP=m;SP.t0=performance.now();
     if(!m.gone&&m.status==='finished'&&!m.solo&&celId!==m.id){celId=m.id;celebrate(m.result&&m.result.winner>=0?m.players[m.result.winner]:null)}
     if(view==='spec')updSpec()}
@@ -81,7 +82,7 @@ function render(){
   ${err?`<p style="color:var(--bad)">${esc(err)}</p>`:''}
   <div class="row"><div class="grow"><label>Họ và tên</label><input id="nm" value="${esc(name)}" maxlength="40" placeholder="Nguyễn Văn A"></div><div class="grow"><label>MSSV (duy nhất)</label><input id="ms" value="${esc(mssv)}" maxlength="15" placeholder="TH12345" autocapitalize="characters" style="text-transform:uppercase"></div>
   <div class="grow"><label>Mã phòng (tuỳ chọn, để ghép đúng cặp)</label><input id="cd" maxlength="20" placeholder="Để trống = ghép tự động"></div></div>
-  <div class="row" style="margin-top:14px"><button onclick="join(false)">⚔️ Vào phòng thi</button><button class="g" onclick="join(true)">Luyện tập một mình</button></div></div>
+  <div class="row" style="margin-top:14px"><button onclick="join(false)">⚔️ Vào phòng thi</button><button class="g" onclick="join(true)">Thi một mình</button></div></div>
   <div class="card mu">Giữ đúng dấu tiếng Việt, dùng Space để sang từ tiếp theo và Backspace để sửa lỗi. Từ nào gõ sai sẽ tô đỏ sau khi bạn bấm Space. Dán văn bản bị chặn.</div>`;
   else if(view==='wait')a.innerHTML=`<div class="card" style="text-align:center"><div class="big">⏳</div><h2>Đang chờ đối thủ…</h2><p class="mu">Mã phòng: <b>${esc(S.code)}</b>. Người thứ hai nhập cùng mã (hoặc để trống mã) sẽ vào phòng này.</p><button class="g" onclick="leave()">Hủy</button></div>`;
   else if(view==='game'){if(!ta)build(a);update()}
@@ -136,10 +137,10 @@ function update(){
 function paint0(){$('#txt').innerHTML='<span class="mu">Đoạn văn sẽ hiện khi bắt đầu…</span>'}
 function result(){
   const w=S.result.winner,P=S.players;
-  const head=S.solo?'Kết quả luyện tập':w<0?'🤝 Hòa!':'🏆 '+esc(P[w].name)+(w===S.me?' (bạn)':'')+' chiến thắng!';
+  const head=S.solo?'Kết quả thi một mình':w<0?'🤝 Hòa!':'🏆 '+esc(P[w].name)+(w===S.me?' (bạn)':'')+' chiến thắng!';
   $('#res').innerHTML=`<div class="card"><div class="win">${head}</div><table><tr><th>Thí sinh</th><th>WPM</th><th>Chính xác</th><th>Ký tự đúng</th><th>Điểm</th></tr>
   ${P.map(p=>`<tr><td>${esc(p.name)}<br><span class="mu">${esc(p.mssv||'')}</span></td><td>${p.wpm}</td><td>${p.acc}%</td><td>${p.correct}/${p.len}</td><td><b>${p.score}</b></td></tr>`).join('')}</table>
-  <div class="row" style="margin-top:14px;justify-content:center"><button onclick="leave()">Về trang chủ</button></div></div>`;
+  ${S.solo?'<p class="mu" style="text-align:center">Điểm của bạn đã được ghi vào bảng xếp hạng (nếu là điểm cao nhất của bạn ở mốc thời gian này).</p>':''}<div class="row" style="margin-top:14px;justify-content:center"><button onclick="leave()">Về trang chủ</button></div></div>`;
   $('#res').scrollIntoView({behavior:'smooth'});
 }
 
@@ -151,8 +152,8 @@ function updSpec(){
   if(SP.gone){el.innerHTML='<div class="card mu">Phòng này không còn tồn tại (đã kết thúc hoặc bị hủy). Xem kết quả ở mục “Kết quả các cặp đã thi”.</div>';return}
   const e=performance.now()-SP.t0,st=SP.status,P=SP.players,w=SP.result?SP.result.winner:-1;
   const tm=st==='waiting'?'Đang chờ đối thủ…':st==='countdown'?'Chuẩn bị… '+Math.max(1,Math.ceil((SP.toStart-e)/1000)):st==='running'?fmt(SP.toEnd-e-300):'Hết giờ';
-  let h=`<div class="timer">${tm}</div><div class="mu" style="text-align:center">${SP.solo?'Luyện tập':'Phòng thi'} · ${SP.dur} phút</div><div class="pl" style="margin-top:12px">${P.map(p=>card(p,false)).join('')}</div>`;
-  if(st==='finished')h+=`<div class="card"><div class="win">${SP.solo?'Kết quả luyện tập':w<0?'🤝 Hòa!':'🏆 '+esc(P[w].name)+' ('+esc(P[w].mssv)+') chiến thắng!'}</div>
+  let h=`<div class="timer">${tm}</div><div class="mu" style="text-align:center">${SP.solo?'Thi một mình':'Phòng thi'} · ${SP.dur} phút</div><div class="pl" style="margin-top:12px">${P.map(p=>card(p,false)).join('')}</div>`;
+  if(st==='finished')h+=`<div class="card"><div class="win">${SP.solo?'Kết quả thi một mình':w<0?'🤝 Hòa!':'🏆 '+esc(P[w].name)+' ('+esc(P[w].mssv)+') chiến thắng!'}</div>
   <table><tr><th>Thí sinh</th><th>WPM</th><th>Chính xác</th><th>Ký tự đúng</th><th>Điểm</th></tr>${P.map(p=>`<tr><td>${esc(p.name)}<br><span class="mu">${esc(p.mssv||'')}</span></td><td>${p.wpm}</td><td>${p.acc}%</td><td>${p.correct}/${p.len}</td><td><b>${p.score}</b></td></tr>`).join('')}</table></div>`;
   el.innerHTML=h;const b=$('#cb');if(b)b.style.display=st==='finished'&&!SP.solo?'':'none';
 }
@@ -174,25 +175,38 @@ function setLB(d){lbDur=d;render()}
 function lbView(a){
   const L=LBD?LBD[lbDur]||[]:null,medal=['🥇','🥈','🥉'],mine=mssv||'';
   a.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🏆 Bảng xếp hạng</h2><button class="g" onclick="tx({t:'lb'})">↻ Làm mới</button></div>
-  <p class="mu">Điểm cao nhất của mỗi thí sinh trong các trận đối kháng, xếp riêng theo từng loại thời gian thi.</p>
+  <p class="mu">Điểm cao nhất của mỗi thí sinh (tính cả thi đối kháng và thi một mình), xếp riêng theo từng loại thời gian thi.</p>
   <div class="tabs">${[1,2,3,4,5].map(d=>`<button class="${d===lbDur?'':'g'}" onclick="setLB(${d})">${d} phút</button>`).join('')}</div>
   ${L===null?'<p class="mu">Đang tải…</p>':L.length?`<div style="overflow-x:auto"><table><tr><th>Hạng</th><th style="text-align:left">Thí sinh</th><th>MSSV</th><th>Điểm</th><th>WPM</th><th>Chính xác</th><th>Ngày</th></tr>
   ${L.map((e,i)=>`<tr class="${e.mssv===mine?'me-row':''}"><td>${medal[i]||i+1}</td><td style="text-align:left">${esc(e.name)}</td><td>${esc(e.mssv)}</td><td><b>${e.score}</b></td><td>${e.wpm}</td><td>${e.acc}%</td><td>${new Date(e.at).toLocaleDateString('vi-VN')}</td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có kết quả nào cho loại thời gian này.</p>'}</div>`;
 }
 function renStu(k){const n=prompt('Họ tên mới cho '+k+':');if(n)tx({t:'renstudent',mssv:k,name:n})}
 function delStu(k){if(confirm('Xóa sinh viên '+k+' và điểm trong bảng xếp hạng? MSSV này sẽ được đăng ký lại từ đầu.'))tx({t:'delstudent',mssv:k})}
-function resetLB(){if(confirm('Xóa toàn bộ bảng xếp hạng? Không thể hoàn tác.'))tx({t:'resetlb'})}
+let admDur=2;
+function admLbInner(){const L=(A.lb&&A.lb[admDur])||[];return `<div class="tabs">${[1,2,3,4,5].map(d=>`<button class="${d===admDur?'':'g'}" onclick="setAdmLb(${d})">${d} phút</button>`).join('')}</div>`+(L.length?`<div style="max-height:320px;overflow:auto"><table><tr><th>Hạng</th><th style="text-align:left">Thí sinh</th><th>MSSV</th><th>Điểm</th><th></th></tr>${L.map((e,i)=>`<tr><td>${i+1}</td><td style="text-align:left">${esc(e.name)}</td><td>${esc(e.mssv)}</td><td>${e.score}</td><td><button class="g" onclick="delLB('${esc(e.mssv)}',${admDur})">✕ Xóa</button></td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có dữ liệu.</p>')}
+function setAdmLb(d){admDur=d;$('#alb').innerHTML=admLbInner()}
+function delLB(k,d){if(confirm('Xóa điểm của '+k+' ở mốc '+d+' phút?'))tx({t:'dellb',mssv:k,dur:d})}
+function resetLBd(){const d=+$('#rd').value;if(confirm('Xóa toàn bộ bảng xếp hạng mốc '+d+' phút? Không thể hoàn tác.'))tx({t:'resetlb',dur:d})}
+function resetLB(){if(confirm('Xóa TOÀN BỘ bảng xếp hạng (cả 5 mốc thời gian)? Không thể hoàn tác.'))tx({t:'resetlb'})}
+function resetHist(){if(confirm('Xóa toàn bộ lịch sử trận đấu? Không thể hoàn tác.'))tx({t:'resethist'})}
+function resetAll(){const c=prompt('Xóa TOÀN BỘ sinh viên, bảng xếp hạng và lịch sử? Gõ XOA để xác nhận:');if(c==='XOA')tx({t:'resetall',confirm:'XOA'})}
+function restoreFile(i){const f=i.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(confirm('Khôi phục sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại. Tiếp tục?'))tx({t:'restore',data:d})}catch(e){alert('File sao lưu không hợp lệ')}i.value=''};r.readAsText(f)}
+function saveBackup(d){const u=URL.createObjectURL(new Blob([JSON.stringify(d,null,1)],{type:'application/json'})),l=document.createElement('a');l.href=u;l.download='typing-pro-backup-'+new Date().toISOString().slice(0,10)+'.json';l.click();URL.revokeObjectURL(u)}
 function adminView(a){
   const txt=A.cfg.texts.map(t=>t.title+'\n'+t.text).join('\n---\n');
   const H=A.history.slice().reverse();
-  a.innerHTML=`<div class="card"><h2 style="margin-top:0">Cấu hình cuộc thi</h2>
+  a.innerHTML=`${A.persist?'<div class="card" style="border-color:var(--ok)">✅ Dữ liệu được lưu vĩnh viễn trên cơ sở dữ liệu.</div>':'<div class="card" style="border-color:var(--bad)">⚠️ Chưa kết nối cơ sở dữ liệu: dữ liệu sẽ MẤT khi server khởi động lại. Xem README để cấu hình Upstash (miễn phí).</div>'}<div class="card"><h2 style="margin-top:0">Cấu hình cuộc thi</h2>
   <label>Thời gian mỗi lượt</label><select id="du" style="max-width:200px">${[1,2,3,4,5].map(m=>`<option value="${m}" ${m===A.cfg.duration?'selected':''}>${m} phút</option>`).join('')}</select>
   <label style="margin-top:12px">Đoạn văn (dòng 1 là tiêu đề, các dòng sau là nội dung; ngăn cách các đoạn bằng dòng ---)</label>
   <textarea id="tx" class="f" rows="10">${esc(txt)}</textarea>
   <div class="row" style="margin-top:12px"><button onclick="saveCfg()">Lưu cấu hình</button><span id="sv" class="mu"></span></div></div>
   <div class="card"><h2 style="margin-top:0">Phòng đang hoạt động</h2>${A.live.length?`<table>${A.live.map(r=>`<tr><td>${r.names.map(esc).join(' vs ')||'…'}</td><td>${{waiting:'Đang chờ',countdown:'Chuẩn bị',running:'Đang thi'}[r.status]||r.status}</td><td><button class="g" onclick="watch(${r.id})">👁 Theo dõi</button></td></tr>`).join('')}</table>`:'<p class="mu">Không có phòng nào.</p>'}</div>
+  <div class="card"><h2 style="margin-top:0">Quản lý dữ liệu</h2>
+  <div class="row"><select id="rd" style="max-width:130px">${[1,2,3,4,5].map(m=>`<option value="${m}">${m} phút</option>`).join('')}</select><button class="g" onclick="resetLBd()">Xóa bảng xếp hạng mốc này</button><button class="g" onclick="resetLB()">Xóa toàn bộ bảng xếp hạng</button><button class="g" onclick="resetHist()">Xóa lịch sử trận đấu</button></div>
+  <div class="row" style="margin-top:10px"><button class="g" onclick="tx({t:'backup'})">⬇ Tải bản sao lưu</button><label class="mu" style="margin:0">⬆ Khôi phục từ file: <input type="file" accept=".json" style="width:auto" onchange="restoreFile(this)"></label><button style="background:var(--bad)" onclick="resetAll()">⚠ Xóa toàn bộ dữ liệu</button></div></div>
+  <div class="card"><h2 style="margin-top:0">Bảng xếp hạng (quản lý từng dòng)</h2><div id="alb">${admLbInner()}</div></div>
   <div class="card"><h2 style="margin-top:0">Sinh viên đã đăng ký (${A.students.length})</h2>${A.students.length?`<div style="max-height:320px;overflow:auto"><table><tr><th>MSSV</th><th style="text-align:left">Họ tên</th><th></th></tr>${A.students.map(x=>`<tr><td>${esc(x.mssv)}</td><td style="text-align:left">${esc(x.name)}</td><td><button class="g" onclick="renStu('${esc(x.mssv)}')">Sửa tên</button> <button class="g" onclick="delStu('${esc(x.mssv)}')">Xóa</button></td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có sinh viên nào.</p>'}</div>
-  <div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Kết quả các cặp đã thi</h2><div class="row"><button class="g" onclick="csv()">Xuất CSV</button><button class="g" onclick="resetLB()">Xóa bảng xếp hạng</button></div></div>
+  <div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Kết quả các cặp đã thi</h2><button class="g" onclick="csv()">Xuất CSV</button></div>
   ${H.length?`<table><tr><th>Cặp thi</th><th>Điểm</th><th>WPM</th><th>Chính xác</th><th>Thắng</th><th></th></tr>${H.map(h=>{const[a,b]=h.players;return`<tr><td>${esc(a.name)} (${esc(a.mssv)}) vs ${esc(b.name)} (${esc(b.mssv)})</td><td>${a.score} – ${b.score}</td><td>${a.wpm} – ${b.wpm}</td><td>${a.acc}% – ${b.acc}%</td><td>${h.winner<0?'Hòa':esc(h.players[h.winner].name)}</td><td><button class="g" onclick="celH(${A.history.indexOf(h)})">🎉</button></td></tr>`}).join('')}</table>`:'<p class="mu">Chưa có kết quả.</p>'}</div>`;
 }
 function saveCfg(){

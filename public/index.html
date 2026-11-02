@@ -23,9 +23,9 @@ button.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}
 .bar{height:10px;border-radius:6px;background:var(--bd);overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--ac);transition:width .25s}
 .st{display:flex;gap:16px;flex-wrap:wrap;font-size:14px}.st b{font-size:20px}
 .timer{font-size:44px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums;margin:8px 0}
-.txt{font:22px/1.8 Georgia,"Times New Roman",serif;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:18px;margin-top:12px;user-select:none;max-height:300px;overflow:auto}
-.txt .ok{color:var(--ok)}.txt .bad{background:var(--badbg);color:var(--bad)}.txt .cur{background:var(--cur);border-radius:3px}
-textarea.in{width:100%;height:90px;margin-top:12px;padding:12px;border-radius:12px;border:2px solid var(--ac);background:var(--card);color:var(--tx);font:18px/1.5 inherit;resize:none}
+.txt{font:24px/1.9 "Segoe UI","Be Vietnam Pro",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:18px;margin-top:12px;user-select:none;max-height:300px;overflow:auto}
+.txt span{padding:1px 3px;border-radius:4px}.txt .ok{color:var(--ok)}.txt .bad{background:var(--badbg);color:var(--bad);text-decoration:underline wavy}.txt .cur{background:var(--cur);box-shadow:0 0 0 2px var(--ac)}
+textarea.in{width:100%;height:90px;margin-top:12px;padding:12px;border-radius:12px;border:2px solid var(--ac);background:var(--card);color:var(--tx);font:20px/1.5 "Segoe UI",Roboto,Arial,sans-serif;resize:none}
 .win{font-size:28px;font-weight:800;text-align:center;margin:6px 0 14px}
 table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:center;border-bottom:1px solid var(--bd)}
 .tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;background:var(--bd)}
@@ -68,7 +68,7 @@ function join(solo){
   name=($('#nm').value||'').replace(/\s+/g,' ').trim();mssv=($('#ms').value||'').trim().toUpperCase();
   LS.set('tp_name',name);LS.set('tp_mssv',mssv);
   if(name.length<2){err='Vui lòng nhập họ tên.';return render()}
-  if(!/^[A-Z0-9]{5,15}$/.test(mssv)){err='MSSV không hợp lệ (5–15 ký tự chữ hoặc số, ví dụ PH12345).';return render()}
+  if(!/^[A-Z0-9]{5,15}$/.test(mssv)){err='MSSV không hợp lệ (5–15 ký tự chữ hoặc số, ví dụ TH12345).';return render()}
   err='';tx({t:'join',name,mssv,code:solo?'':$('#cd').value,solo})
 }
 function adminLogin(){const p=prompt('Mật khẩu giám thị:');if(p)tx({t:'admin',pass:p})}
@@ -77,12 +77,12 @@ function render(){
   const a=$('#app');
   $('#nav').innerHTML=view==='home'?'<button class="g" onclick="openLB()">🏆 Bảng xếp hạng</button> <button class="g" onclick="adminLogin()">🛠 Giám thị</button>':view==='spec'?'<button class="g" onclick="stopWatch()">← Quay lại</button>':(view==='admin'||view==='lb')?'<button class="g" onclick="A=null;reset()">← Trang chủ</button>':'';
   if(view==='home')a.innerHTML=`<div class="card"><h2 style="margin-top:0">Thi gõ đối kháng 1–1</h2>
-  <p class="mu">Hai người vào cùng một phòng, gõ cùng một đoạn tiếng Việt. Điểm = tốc độ (WPM) × độ chính xác². Thời gian mỗi lượt: <b>${dur} phút</b>.<br>MSSV là duy nhất, dùng để định danh bạn và lưu điểm cao nhất. Lần đầu nhập sẽ đăng ký họ tên cho MSSV đó; các lần sau phải nhập đúng họ tên.</p>
+  <p class="mu">Hai người vào cùng một phòng, gõ cùng một đoạn tiếng Việt. Điểm = tốc độ (WPM) × độ chính xác². Chấm theo từng từ: chỉ từ gõ đúng hoàn toàn mới được tính tốc độ, và gõ sai một từ không ảnh hưởng các từ sau. Thời gian mỗi lượt: <b>${dur} phút</b>.<br>MSSV là duy nhất, dùng để định danh bạn và lưu điểm cao nhất. Lần đầu nhập sẽ đăng ký họ tên cho MSSV đó; các lần sau phải nhập đúng họ tên.</p>
   ${err?`<p style="color:var(--bad)">${esc(err)}</p>`:''}
-  <div class="row"><div class="grow"><label>Họ và tên</label><input id="nm" value="${esc(name)}" maxlength="40" placeholder="Nguyễn Văn A"></div><div class="grow"><label>MSSV (duy nhất)</label><input id="ms" value="${esc(mssv)}" maxlength="15" placeholder="PH12345" autocapitalize="characters" style="text-transform:uppercase"></div>
+  <div class="row"><div class="grow"><label>Họ và tên</label><input id="nm" value="${esc(name)}" maxlength="40" placeholder="Nguyễn Văn A"></div><div class="grow"><label>MSSV (duy nhất)</label><input id="ms" value="${esc(mssv)}" maxlength="15" placeholder="TH12345" autocapitalize="characters" style="text-transform:uppercase"></div>
   <div class="grow"><label>Mã phòng (tuỳ chọn, để ghép đúng cặp)</label><input id="cd" maxlength="20" placeholder="Để trống = ghép tự động"></div></div>
   <div class="row" style="margin-top:14px"><button onclick="join(false)">⚔️ Vào phòng thi</button><button class="g" onclick="join(true)">Luyện tập một mình</button></div></div>
-  <div class="card mu">Giữ đúng dấu tiếng Việt, có thể dùng Backspace để sửa lỗi (chữ sai tô đỏ). Dán văn bản bị chặn.</div>`;
+  <div class="card mu">Giữ đúng dấu tiếng Việt, dùng Space để sang từ tiếp theo và Backspace để sửa lỗi. Từ nào gõ sai sẽ tô đỏ sau khi bạn bấm Space. Dán văn bản bị chặn.</div>`;
   else if(view==='wait')a.innerHTML=`<div class="card" style="text-align:center"><div class="big">⏳</div><h2>Đang chờ đối thủ…</h2><p class="mu">Mã phòng: <b>${esc(S.code)}</b>. Người thứ hai nhập cùng mã (hoặc để trống mã) sẽ vào phòng này.</p><button class="g" onclick="leave()">Hủy</button></div>`;
   else if(view==='game'){if(!ta)build(a);update()}
   else if(view==='admin')adminView(a);
@@ -93,7 +93,14 @@ function build(a){
   a.innerHTML=`<div id="tm" class="timer"></div><div class="pl" id="cards"></div><div id="txt" class="txt"></div>
   <textarea id="ta" class="in" disabled autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Bắt đầu gõ khi đếm ngược kết thúc…"></textarea><div id="res"></div>`;
   ta=$('#ta');let comp=false;
-  const push=()=>{if(S&&S.status==='running'){tx({t:'typed',text:ta.value});paint()}else ta.value=''};
+  const push=()=>{
+    if(S&&S.status==='running'){
+      const n=ta.value.replace(/\n/g,' ').replace(/^\s+/,'').replace(/\s{2,}/g,' ');
+      if(n!==ta.value)ta.value=n;
+      tx({t:'typed',text:n});paint()
+    }else ta.value=''
+  };
+  ta.addEventListener('keydown',e=>{if(e.key==='Enter')e.preventDefault()});
   ta.addEventListener('compositionstart',()=>comp=true);
   ta.addEventListener('compositionend',()=>{comp=false;push()});
   ta.addEventListener('input',()=>{if(!comp)push()});
@@ -106,8 +113,14 @@ function card(p,me){return`<div class="p ${me?'me':''}"><div class="row" style="
 <div class="bar"><i style="width:${pct(p.correct,p.len)}%"></i></div>
 <div class="st"><div>WPM<br><b>${Math.round(p.wpm)}</b></div><div>Chính xác<br><b>${p.acc}%</b></div><div>Điểm<br><b>${p.score}</b></div></div></div>`}
 function paint(){
-  const T=S.text,t=ta.value.normalize('NFC');let h='';
-  for(let i=0;i<T.length;i++){const c=T[i],x=t[i];h+=`<span class="${x==null?(i===t.length&&S.status==='running'?'cur':''):x===T[i]?'ok':'bad'}">${esc(c)}</span>`}
+  const W=S.text.split(' '),t=ta.value.normalize('NFC').replace(/^\s+/,'').replace(/\s{2,}/g,' ').split(' '),run=S.status==='running',ci=t.length-1;
+  let h='';
+  W.forEach((w,i)=>{
+    let c='';
+    if(i<ci)c=t[i]===w?'ok':'bad';                       // từ đã gõ xong (đã bấm Space)
+    else if(i===ci)c=run?'cur':(t[i]===w?'ok':t[i]?'bad':''); // từ đang gõ: chỉ tô sáng, không báo lỗi giữa chừng (Telex)
+    h+=`<span class="${c}">${esc(w)}</span> `;
+  });
   const el=$('#txt');el.innerHTML=h||'<span class="mu">Đoạn văn sẽ hiện khi bắt đầu…</span>';
   const c=el.querySelector('.cur');if(c)el.scrollTop=Math.max(0,c.offsetTop-110);
 }

@@ -2,28 +2,52 @@
 const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
 const PORT = process.env.PORT || 3000, ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
-const CF = path.join(__dirname, 'config.json');
+// ---- Lưu trữ: Upstash Redis (vĩnh viễn) nếu có biến môi trường, nếu không thì lưu file (mất khi Render khởi động lại) ----
+const UP_URL = process.env.UPSTASH_REDIS_REST_URL, UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN, DB = !!(UP_URL && UP_TOKEN);
+async function redis(cmd) {
+  const r = await fetch(UP_URL, { method: 'POST', headers: { Authorization: 'Bearer ' + UP_TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify(cmd) });
+  const j = await r.json(); if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status)); return j.result;
+}
+async function kvGet(k) {
+  if (DB) { const v = await redis(['GET', 'tp:' + k]); return v ? JSON.parse(v) : null; }
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, k + '.json'), 'utf8')); } catch (e) { return null; }
+}
+async function kvSet(k, v) {
+  if (DB) return redis(['SET', 'tp:' + k, JSON.stringify(v)]);
+  fs.writeFileSync(path.join(__dirname, k + '.json'), JSON.stringify(v));
+}
+const dirty = new Set(); let flushTimer = null;
+const valOf = k => ({ config: cfg, students: ST, lb: LB, history }[k]);
+function save(...keys) { keys.forEach(k => dirty.add(k)); if (!flushTimer) flushTimer = setTimeout(flush, 1500); }
+async function flush() {
+  clearTimeout(flushTimer); flushTimer = null;
+  const ks = [...dirty]; dirty.clear();
+  for (const k of ks) { try { await kvSet(k, valOf(k)); } catch (e) { console.error('Lỗi lưu', k, e.message); dirty.add(k); if (!flushTimer) flushTimer = setTimeout(flush, 5000); } }
+}
+async function loadAll() {
+  try {
+    const [c, st, l, h] = await Promise.all([kvGet('config'), kvGet('students'), kvGet('lb'), kvGet('history')]);
+    if (c && c.texts) cfg = c; if (st) ST = st; if (l) LB = l; if (h) history = h;
+    console.log(DB ? 'Lưu trữ: Upstash Redis (vĩnh viễn). Sinh viên: ' + Object.keys(ST).length : 'CẢNH BÁO: chưa cấu hình Upstash – dữ liệu lưu file tạm, sẽ mất khi Render khởi động lại.');
+  } catch (e) { console.error('Không đọc được dữ liệu, dừng để tránh ghi đè:', e.message); process.exit(1); }
+}
+process.on('SIGTERM', async () => { await flush(); process.exit(0); });
 let cfg = { duration: 2, texts: [
  { title: 'Hà Nội mùa thu', text: 'Hà Nội vào thu, những cơn gió se lạnh len qua từng con phố nhỏ. Hương hoa sữa thoang thoảng trong không khí khiến lòng người chợt dịu lại. Trên hè phố, người ta ngồi bên tách cà phê nóng, lặng lẽ ngắm lá vàng rơi. Mùa thu ở đây không ồn ào mà sâu lắng, như một bản nhạc cũ nhẹ nhàng ngân vang trong ký ức của mỗi người con đất Việt.' },
  { title: 'Giá trị của việc học', text: 'Học tập không chỉ là việc ghi nhớ kiến thức mà còn là quá trình rèn luyện tư duy và nhân cách. Mỗi sinh viên cần biết đặt câu hỏi, dám thử nghiệm và không sợ thất bại. Thành công không đến từ may mắn, mà đến từ sự kiên trì mỗi ngày. Khi chúng ta chịu khó luyện tập, những điều tưởng chừng khó khăn sẽ dần trở nên quen thuộc và đơn giản hơn rất nhiều.' },
  { title: 'Công nghệ và cuộc sống', text: 'Công nghệ thông tin đã thay đổi hoàn toàn cách con người làm việc, học tập và giao tiếp. Chỉ với một chiếc máy tính kết nối mạng, chúng ta có thể tiếp cận kho tri thức khổng lồ của nhân loại. Tuy nhiên, việc sử dụng công nghệ một cách thông minh và có trách nhiệm mới là điều quan trọng nhất. Kỹ năng gõ phím nhanh và chính xác là nền tảng giúp mọi người làm việc hiệu quả hơn.' }
 ] };
-try { cfg = JSON.parse(fs.readFileSync(CF, 'utf8')); } catch (e) {}
 
 // Danh bạ sinh viên: MSSV (duy nhất) -> họ tên
-const STF = path.join(__dirname, 'students.json');
 let ST = {};
-try { ST = JSON.parse(fs.readFileSync(STF, 'utf8')); } catch (e) {}
-const saveST = () => { try { fs.writeFileSync(STF, JSON.stringify(ST)); } catch (e) {} };
+const saveST = () => save('students');
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/\s+/g, ' ').trim();
 const active = new Map(); // MSSV đang được sử dụng -> ws
 const releaseId = ws => { if (ws.mssv && active.get(ws.mssv) === ws) active.delete(ws.mssv); };
 
 // Bảng xếp hạng (điểm cao nhất của mỗi thí sinh theo từng loại thời gian)
-const LBF = path.join(__dirname, 'leaderboard.json');
 let LB = [];
-try { LB = JSON.parse(fs.readFileSync(LBF, 'utf8')); } catch (e) {}
-const saveLB = () => { try { fs.writeFileSync(LBF, JSON.stringify(LB)); } catch (e) {} };
+const saveLB = () => save('lb');
 function recordLB(x, dur) {
   if (!x.score || !x.mssv) return;
   const e = LB.find(o => o.dur === dur && o.mssv === x.mssv);
@@ -43,7 +67,8 @@ const server = http.createServer((req, res) => {
   });
 });
 const wss = new WebSocketServer({ server });
-const waiting = new Map(), rooms = new Map(), admins = new Set(), history = [];
+const waiting = new Map(), rooms = new Map(), admins = new Set();
+let history = [];
 let seq = 0;
 const prep = t => String(t).normalize('NFC').replace(/\s+/g, ' ').trim();
 const send = (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
@@ -80,7 +105,7 @@ function broadcast(r, extra) {
 function pushAdmin() {
   const live = [...rooms.values()].map(r => ({ id: r.id, names: r.players.map(p => p.name), status: r.status }));
   const students = Object.entries(ST).map(([mssv, v]) => ({ mssv, name: v.name }));
-  admins.forEach(ws => send(ws, { t: 'admin', cfg, live, students, history: history.slice(-200) }));
+  admins.forEach(ws => send(ws, { t: 'admin', cfg, live, students, history: history.slice(-200), lb: lbData(), persist: DB }));
 }
 function start(r) {
   r.status = 'countdown'; const now = Date.now();
@@ -103,8 +128,8 @@ function finish(r) {
     if (r.players[1].left && !r.players[0].left) w = 0;
   }
   r.result = { winner: w };
-  if (!r.solo) { s.forEach(x => recordLB(x, r.dur)); saveLB(); }
-  if (!r.solo) history.push({ at: Date.now(), players: s, winner: w });
+  s.forEach((x, i) => { if (!r.players[i].left) recordLB(x, r.dur); }); saveLB(); // cả thi đối kháng và thi một mình; bỏ cuộc giữa chừng thì không tính
+  if (!r.solo) { history.push({ at: Date.now(), players: s, winner: w }); if (history.length > 3000) history.shift(); save('history'); }
   r.players.forEach(p => releaseId(p.ws));
   broadcast(r); rooms.delete(r.id); pushAdmin();
 }
@@ -168,7 +193,18 @@ wss.on('connection', ws => {
       const k = String(m.mssv), nn = String(m.name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
       if (ST[k] && nn.length >= 2) { ST[k].name = nn; LB.forEach(e => { if (e.mssv === k) e.name = nn; }); saveST(); saveLB(); pushAdmin(); }
     }
-    else if (m.t === 'resetlb' && admins.has(ws)) { LB = []; saveLB(); pushAdmin(); }
+    else if (m.t === 'resetlb' && admins.has(ws)) { if (+m.dur) LB = LB.filter(e => e.dur !== +m.dur); else LB = []; saveLB(); pushAdmin(); }
+    else if (m.t === 'dellb' && admins.has(ws)) { LB = LB.filter(e => !(e.mssv === String(m.mssv) && e.dur === +m.dur)); saveLB(); pushAdmin(); }
+    else if (m.t === 'resethist' && admins.has(ws)) { history = []; save('history'); pushAdmin(); }
+    else if (m.t === 'resetall' && admins.has(ws) && m.confirm === 'XOA') { ST = {}; LB = []; history = []; save('students', 'lb', 'history'); pushAdmin(); }
+    else if (m.t === 'backup' && admins.has(ws)) send(ws, { t: 'backup', data: { config: cfg, students: ST, lb: LB, history } });
+    else if (m.t === 'restore' && admins.has(ws)) {
+      const d = m.data;
+      if (d && d.students && typeof d.students === 'object' && Array.isArray(d.lb) && Array.isArray(d.history)) {
+        ST = d.students; LB = d.lb; history = d.history; if (d.config && Array.isArray(d.config.texts) && d.config.texts.length) cfg = d.config;
+        save('config', 'students', 'lb', 'history'); pushAdmin();
+      }
+    }
     else if (m.t === 'typed') {
       const r = ws.room; if (!r || r.status !== 'running') return;
       const p = r.players.find(x => x.ws === ws); if (p.doneAt) return;
@@ -182,10 +218,10 @@ wss.on('connection', ws => {
       if (m.pass === ADMIN_PASS) { admins.add(ws); pushAdmin(); } else send(ws, { t: 'adminfail' });
     } else if (m.t === 'setcfg' && admins.has(ws)) {
       const d = Math.round(+m.duration), tx = (m.texts || []).filter(t => t && t.text).map(t => ({ title: String(t.title || '').slice(0, 80), text: String(t.text).replace(/\s+/g, ' ').trim() }));
-      if (d >= 1 && d <= 5 && tx.length) { cfg = { duration: d, texts: tx }; try { fs.writeFileSync(CF, JSON.stringify(cfg, null, 1)); } catch (e) {} }
+      if (d >= 1 && d <= 5 && tx.length) { cfg = { duration: d, texts: tx }; save('config'); }
       pushAdmin();
     }
   });
   ws.on('close', () => { unwatch(ws); admins.delete(ws); leaveRoom(ws); });
 });
-server.listen(PORT, () => console.log('Typing Pro chạy tại http://localhost:' + PORT));
+loadAll().then(() => server.listen(PORT, () => console.log('Typing Pro chạy tại http://localhost:' + PORT)));

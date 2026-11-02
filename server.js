@@ -54,8 +54,13 @@ function stat(p, r, now) {
   const wpm = m > 0.008 ? c / 5 / m : 0, acc = t.length ? 100 * c / t.length : 100;
   return { name: p.name, mssv: p.mssv, correct: c, len: T.length, wpm: +wpm.toFixed(1), acc: +acc.toFixed(1), score: Math.round(wpm * (acc / 100) ** 2), done: !!p.doneAt };
 }
+function specMsg(r, now, ps) {
+  return { t: 'spec', id: r.id, status: r.status, solo: r.solo, dur: r.dur, players: ps, toStart: r.startAt ? r.startAt - now : 0, toEnd: r.endAt ? r.endAt - now : 0, result: r.result || null };
+}
+function unwatch(ws) { if (ws.watching && ws.watching.watchers) ws.watching.watchers.delete(ws); ws.watching = null; }
 function broadcast(r, extra) {
   const now = Date.now(), ps = r.players.map(p => stat(p, r, now));
+  if (r.watchers) r.watchers.forEach(w => send(w, specMsg(r, now, ps)));
   r.players.forEach((p, i) => send(p.ws, Object.assign({
     t: 'state', status: r.status, me: i, solo: r.solo, dur: r.dur, players: ps,
     toStart: r.startAt ? r.startAt - now : 0, toEnd: r.endAt ? r.endAt - now : 0,
@@ -63,7 +68,7 @@ function broadcast(r, extra) {
   }, extra)));
 }
 function pushAdmin() {
-  const live = [...rooms.values()].map(r => ({ names: r.players.map(p => p.name), status: r.status }));
+  const live = [...rooms.values()].map(r => ({ id: r.id, names: r.players.map(p => p.name), status: r.status }));
   const students = Object.entries(ST).map(([mssv, v]) => ({ mssv, name: v.name }));
   admins.forEach(ws => send(ws, { t: 'admin', cfg, live, students, history: history.slice(-200) }));
 }
@@ -140,6 +145,13 @@ wss.on('connection', ws => {
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
     if (m.t === 'join') join(ws, m);
     else if (m.t === 'leave') leaveRoom(ws);
+    else if (m.t === 'watch' && admins.has(ws)) {
+      unwatch(ws); const r = rooms.get(+m.id);
+      if (!r) return send(ws, { t: 'spec', gone: true });
+      (r.watchers = r.watchers || new Set()).add(ws); ws.watching = r;
+      const now = Date.now(); send(ws, specMsg(r, now, r.players.map(p => stat(p, r, now))));
+    }
+    else if (m.t === 'unwatch') unwatch(ws);
     else if (m.t === 'lb') send(ws, { t: 'lb', data: lbData() });
     else if (m.t === 'delstudent' && admins.has(ws)) { const k = String(m.mssv); delete ST[k]; LB = LB.filter(e => e.mssv !== k); saveST(); saveLB(); pushAdmin(); }
     else if (m.t === 'renstudent' && admins.has(ws)) {
@@ -162,6 +174,6 @@ wss.on('connection', ws => {
       pushAdmin();
     }
   });
-  ws.on('close', () => { admins.delete(ws); leaveRoom(ws); });
+  ws.on('close', () => { unwatch(ws); admins.delete(ws); leaveRoom(ws); });
 });
 server.listen(PORT, () => console.log('Typing Pro chạy tại http://localhost:' + PORT));

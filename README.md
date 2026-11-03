@@ -7,7 +7,7 @@
 
 ## Deploy lên Render
 - Build Command: `npm install`  |  Start Command: `npm start`
-- Biến môi trường: `ADMIN_PASS` (bắt buộc đổi), cùng 2 biến Upstash bên dưới.
+- Biến môi trường: `ADMIN_PASS` (giám thị 1, bắt buộc đổi), `PROCTOR_PASS` (giám thị 2, đặt mật khẩu khác ADMIN_PASS; không đặt thì tắt vai trò này), cùng 2 biến Upstash bên dưới.
 
 ## Lưu dữ liệu vĩnh viễn (Upstash Redis – miễn phí)
 Ổ đĩa của Render gói Free bị xóa mỗi lần khởi động lại, nên dữ liệu (sinh viên, bảng xếp hạng, lịch sử, cấu hình) được lưu trên Upstash:
@@ -18,9 +18,14 @@
 
 Nếu đã cấu hình Upstash mà server không đọc được dữ liệu lúc khởi động, server sẽ tự dừng (thay vì chạy với dữ liệu rỗng và ghi đè). Xem tab Logs trên Render.
 
-## Giám thị
-Trang chủ → “🛠 Giám thị” → nhập mật khẩu:
+## Hai loại giám thị
+Trang chủ → “🛠 Giám thị” → nhập mật khẩu; mật khẩu nào sẽ vào đúng loại đó:
+- **Giám thị 1 (ADMIN_PASS)**: toàn quyền (mọi chức năng bên dưới).
+- **Giám thị 2 (PROCTOR_PASS)**: chỉ quản lý thi theo lớp: tạo lớp + mật khẩu lớp, chờ sinh viên vào, bấm bắt đầu / kết thúc / hủy, xem kết quả và tung hô. Không có quyền cấu hình, theo dõi phòng đối kháng, xóa/sửa dữ liệu, sao lưu.
+
+## Chức năng của giám thị 1
 - Chỉnh thời gian 1–5 phút, soạn đoạn văn.
 - Theo dõi trực tiếp một phòng thi, tung hô người thắng.
-- Quản lý dữ liệu: xóa từng dòng bảng xếp hạng, xóa theo mốc thời gian, xóa toàn bộ bảng xếp hạng, xóa lịch sử, xóa từng sinh viên / sửa tên, **xóa toàn bộ dữ liệu** (gõ XOA để xác nhận).
+- **Thi theo lớp**: tạo lớp (mã lớp, mật khẩu, thời gian, sĩ số tối đa, đoạn văn) → sinh viên nhập mã + mật khẩu ở trang chủ vào phòng chờ → bấm “Bắt đầu thi” để cả lớp thi cùng lúc, xem bảng xếp hạng trực tiếp, tung hô người đứng đầu. Mỗi lúc chỉ có 1 lớp thi. Kết quả mỗi buổi được lưu thành thống kê (xem ở Bảng xếp hạng → “👥 Theo lớp”) và điểm cũng được ghi vào bảng xếp hạng chung. Nếu server khởi động lại giữa buổi thi, lớp đang mở sẽ mất và cần tạo lại.
+- Quản lý dữ liệu: xóa từng dòng bảng xếp hạng, xóa theo mốc thời gian, xóa toàn bộ bảng xếp hạng, xóa lịch sử, xóa thống kê thi theo lớp, xóa từng sinh viên / sửa tên, **xóa toàn bộ dữ liệu** (gõ XOA để xác nhận).
 - Tải bản sao lưu (.json) và khôi phục từ file.

@@ -23,7 +23,7 @@ button.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}
 .bar{height:10px;border-radius:6px;background:var(--bd);overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--ac);transition:width .25s}
 .st{display:flex;gap:16px;flex-wrap:wrap;font-size:14px}.st b{font-size:20px}
 .timer{font-size:44px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums;margin:8px 0}
-.txt{font:24px/1.9 "Segoe UI","Be Vietnam Pro",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:18px;margin-top:12px;user-select:none;max-height:300px;overflow:auto}
+.txt{font:24px/1.9 "Segoe UI","Be Vietnam Pro",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:18px;margin-top:12px;user-select:none;max-height:clamp(150px,36vh,320px);overflow-y:auto;position:relative}
 .txt span{padding:1px 3px;border-radius:4px}.txt .ok{color:var(--ok)}.txt .bad{background:var(--badbg);color:var(--bad);text-decoration:underline wavy}.txt .cur{background:var(--cur);box-shadow:0 0 0 2px var(--ac)}
 textarea.in{width:100%;height:90px;margin-top:12px;padding:12px;border-radius:12px;border:2px solid var(--ac);background:var(--card);color:var(--tx);font:20px/1.5 "Segoe UI",Roboto,Arial,sans-serif;resize:none}
 .win{font-size:28px;font-weight:800;text-align:center;margin:6px 0 14px}
@@ -111,7 +111,7 @@ function render(){
 function build(a){
   a.innerHTML=`<div id="tm" class="timer"></div><div class="pl" id="cards"></div><div id="clsb"></div><div id="txt" class="txt"></div>
   <textarea id="ta" class="in" disabled autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Bắt đầu gõ khi đếm ngược kết thúc…"></textarea><div id="res"></div>`;
-  ta=$('#ta');let comp=false;
+  ta=$('#ta');let comp=false;if(window.scrollTo)window.scrollTo(0,0);
   const push=()=>{
     if(S&&S.status==='running'){
       const n=ta.value.replace(/\n/g,' ').replace(/^\s+/,'').replace(/\s{2,}/g,' ');
@@ -140,8 +140,9 @@ function paint(){
     else if(i===ci)c=run?'cur':(t[i]===w?'ok':t[i]?'bad':''); // từ đang gõ: chỉ tô sáng, không báo lỗi giữa chừng (Telex)
     h+=`<span class="${c}">${esc(w)}</span> `;
   });
-  const el=$('#txt');el.innerHTML=h||'<span class="mu">Đoạn văn sẽ hiện khi bắt đầu…</span>';
-  const c=el.querySelector('.cur');if(c)el.scrollTop=Math.max(0,c.offsetTop-110);
+  const el=$('#txt'),keep=el.scrollTop;el.innerHTML=h||'<span class="mu">Đoạn văn sẽ hiện khi bắt đầu…</span>';
+  const c=el.querySelector('.cur');
+  el.scrollTop=c?Math.max(0,c.offsetTop-Math.round(el.clientHeight/3)):keep;
 }
 function clsBoard(){const c=S.cls;return `<div class="card" style="margin-top:12px"><b>🏫 Lớp ${esc(c.code)} · Hạng của bạn: ${c.rank}/${c.total}</b><table style="margin-top:8px">${c.top.slice(0,5).map((e,i)=>`<tr><td>${i+1}</td><td style="text-align:left">${esc(e.name)}</td><td>${e.wpm} WPM</td><td><b>${e.score}</b></td></tr>`).join('')}</table></div>`}
 function clsResult(){
@@ -159,7 +160,7 @@ function update(){
   $('#cards').innerHTML=S.players.map((p,i)=>card(p,i===me)).join('');
   $('#clsb').innerHTML=S.cls?clsBoard():'';
   const canType=st==='running'&&!S.players[me].done;
-  ta.disabled=!canType;if(canType&&!focused){focused=true;ta.focus()}
+  ta.disabled=!canType;if(canType&&!focused){focused=true;ta.focus({preventScroll:true})}
   if(S.text)paint();else paint0();
   if(st==='finished'&&!$('#res').innerHTML)result();
 }

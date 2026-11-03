@@ -3,6 +3,7 @@ const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
 const PORT = process.env.PORT || 3000, ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
 // Giám thị 1 (admin, toàn quyền): ADMIN_PASS. Giám thị 2 (chỉ quản lý thi theo lớp): PROCTOR_PASS (không đặt = tắt vai trò này).
+const CLASS_DUR = 5; // thi theo lớp: cố định 5 phút
 const PROCTOR_PASS = process.env.PROCTOR_PASS || '';
 // ---- Lưu trữ: Upstash Redis (vĩnh viễn) nếu có biến môi trường, nếu không thì lưu file (mất khi Render khởi động lại) ----
 const UP_URL = process.env.UPSTASH_REDIS_REST_URL, UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN, DB = !!(UP_URL && UP_TOKEN);
@@ -111,7 +112,7 @@ function pushAdmin() {
   const live = [...rooms.values()].map(r => ({ id: r.id, names: r.players.map(p => p.name), status: r.status }));
   const students = Object.entries(ST).map(([mssv, v]) => ({ mssv, name: v.name }));
   const clsInfo = AC ? { code: AC.code, status: AC.status, total: AC.players.length } : null;
-  procs.forEach(ws => send(ws, { t: 'admin', role: 2, cfg: { duration: cfg.duration, texts: cfg.texts.map(t => ({ title: t.title })) }, cls: clsInfo, sessions: classSummaries() }));
+  procs.forEach(ws => send(ws, { t: 'admin', role: 2, cfg: { duration: CLASS_DUR }, cls: clsInfo, sessions: classSummaries() }));
   admins.forEach(ws => send(ws, { t: 'admin', role: 1, cfg, live, students, history: history.slice(-200), lb: lbData(), persist: DB, cls: AC ? { code: AC.code, status: AC.status, total: AC.players.length } : null, sessions: classSummaries() }));
 }
 function start(r) {
@@ -217,8 +218,8 @@ function clsCreate(ws, m) {
   const code = String(m.code || '').trim().toUpperCase(), pw = String(m.password || '').trim().slice(0, 30);
   if (!/^[A-Z0-9_-]{2,20}$/.test(code)) return err('Mã lớp gồm 2–20 ký tự: chữ, số, dấu - hoặc _.');
   if (pw.length < 3) return err('Mật khẩu lớp tối thiểu 3 ký tự.');
-  const d = Math.round(+m.dur), dur = d >= 1 && d <= 5 ? d : cfg.duration, max = Math.min(100, Math.max(2, Math.round(+m.max) || 60));
-  const ti = Math.round(+m.textIdx), t = cfg.texts[ti >= 0 && ti < cfg.texts.length ? ti : Math.floor(Math.random() * cfg.texts.length)];
+  const dur = CLASS_DUR, max = Math.min(100, Math.max(2, Math.round(+m.max) || 60));
+  const ti = procs.has(ws) ? -1 : Math.round(+m.textIdx), t = cfg.texts[ti >= 0 && ti < cfg.texts.length ? ti : Math.floor(Math.random() * cfg.texts.length)];
   AC = { code, password: pw, dur, max, status: 'open', players: [], text: prep(t.text), words: prep(t.text).split(' '), startAt: 0, endAt: 0 };
   const c = AC;
   c.tick = setInterval(() => { if (c.status !== 'finished' && c.status !== 'cancelled') { sendClsPlayers(c, false); sendClsAdmin(c); } }, 1000);

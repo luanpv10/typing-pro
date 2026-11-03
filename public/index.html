@@ -40,7 +40,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:center;bo
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get(k){try{return localStorage.getItem(k)||''}catch(e){return''}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
-let SP=null,celId=null,celRAF=0,LBD=null,lbDur=2,ws,S=null,view='home',name=LS.get('tp_name'),mssv=LS.get('tp_mssv'),dur=2,err='',A=null,ta=null,focused=false;
+let CA=null,CR=null,clsSel='',wantCls=false,clsCode='',ctm=null,cval='',SP=null,celId=null,celRAF=0,LBD=null,lbDur=2,ws,S=null,view='home',name=LS.get('tp_name'),mssv=LS.get('tp_mssv'),dur=2,err='',A=null,ta=null,focused=false;
 
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);
@@ -51,13 +51,19 @@ function connect(){
 const tx=o=>ws.readyState===1&&ws.send(JSON.stringify(o));
 function on(m){
   if(m.t==='hello'){dur=m.duration;if(view==='home')render()}
-  else if(m.t==='state'){S=m;S.t0=performance.now();view=m.status==='waiting'?'wait':'game';render()}
+  else if(m.t==='state'){if(m.cls&&!m.text&&S&&S.cls&&S.text&&S.cls.code===m.cls.code)m.text=S.text;S=m;S.t0=performance.now();view=m.status==='waiting'?'wait':'game';render()}
+  else if(m.t==='clsadmin'){CA=m;CA.t0=performance.now();
+    if(wantCls){wantCls=false;view='cls';render()}else if(view==='cls')updCls();
+    if(m.sid&&celId!==m.sid){celId=m.sid;if(view==='cls'&&m.players.length&&m.players[0].score>0)celebrate(m.players[0])}}
+  else if(m.t==='clserr'){wantCls=false;alert(m.msg)}
+  else if(m.t==='clsres'){CR=m.session;if(view==='lb')render()}
+  else if(m.t==='clsclosed'){err='Giám thị đã hủy lớp thi.';reset()}
   else if(m.t==='joinerr'){err=m.msg;render()}
-  else if(m.t==='lb'){LBD=m.data;if(view==='lb')render()}
+  else if(m.t==='lb'){LBD=m.data;LBD.classes=m.classes;if(view==='lb')render()}
   else if(m.t==='resync'){if(ta)ta.value=m.text}
   else if(m.t==='aborted'){err='Đối thủ đã thoát trước khi bắt đầu.';reset()}
   else if(m.t==='adminfail'){alert('Sai mật khẩu giám thị')}
-  else if(m.t==='admin'){A=m;if(view==='home'){view='admin';render()}else if(view==='admin'&&!(document.activeElement&&document.activeElement.id==='tx'))render()}
+  else if(m.t==='admin'){A=m;if(view==='home'){view='admin';render()}else if(view==='admin'&&!(document.activeElement&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)))render()}
   else if(m.t==='backup')saveBackup(m.data)
   else if(m.t==='spec'){SP=m;SP.t0=performance.now();
     if(!m.gone&&m.status==='finished'&&!m.solo&&celId!==m.id){celId=m.id;celebrate(m.result&&m.result.winner>=0?m.players[m.result.winner]:null)}
@@ -72,33 +78,45 @@ function join(solo){
   if(!/^[A-Z0-9]{5,15}$/.test(mssv)){err='MSSV không hợp lệ (5–15 ký tự chữ hoặc số, ví dụ TH12345).';return render()}
   err='';tx({t:'join',name,mssv,code:solo?'':$('#cd').value,solo})
 }
+function joinClass(){
+  name=($('#nm').value||'').replace(/\s+/g,' ').trim();mssv=($('#ms').value||'').trim().toUpperCase();clsCode=($('#cc').value||'').trim().toUpperCase();
+  const pw=$('#cp').value||'';LS.set('tp_name',name);LS.set('tp_mssv',mssv);
+  if(name.length<2){err='Vui lòng nhập họ tên.';return render()}
+  if(!/^[A-Z0-9]{5,15}$/.test(mssv)){err='MSSV không hợp lệ (5–15 ký tự chữ hoặc số, ví dụ TH12345).';return render()}
+  if(!clsCode||!pw){err='Nhập mã lớp và mật khẩu lớp.';return render()}
+  err='';tx({t:'joinclass',name,mssv,code:clsCode,password:pw})
+}
 function adminLogin(){const p=prompt('Mật khẩu giám thị:');if(p)tx({t:'admin',pass:p})}
 
 function render(){
   const a=$('#app');
-  $('#nav').innerHTML=view==='home'?'<button class="g" onclick="openLB()">🏆 Bảng xếp hạng</button> <button class="g" onclick="adminLogin()">🛠 Giám thị</button>':view==='spec'?'<button class="g" onclick="stopWatch()">← Quay lại</button>':(view==='admin'||view==='lb')?'<button class="g" onclick="A=null;reset()">← Trang chủ</button>':'';
+  $('#nav').innerHTML=view==='home'?'<button class="g" onclick="openLB()">🏆 Bảng xếp hạng</button> <button class="g" onclick="adminLogin()">🛠 Giám thị</button>':view==='spec'?'<button class="g" onclick="stopWatch()">← Quay lại</button>':view==='cls'?'<button class="g" onclick="view=\'admin\';render()">← Giám thị</button>':view==='admin'?'<button class="g" onclick="A=null;reset()">← Thoát giám thị</button>':view==='lb'?'<button class="g" onclick="backFromLB()">← Quay lại</button>':'';
   if(view==='home')a.innerHTML=`<div class="card"><h2 style="margin-top:0">Thi gõ đối kháng 1–1</h2>
   <p class="mu">Hai người vào cùng một phòng, gõ cùng một đoạn tiếng Việt. Điểm = tốc độ (WPM) × độ chính xác². Chấm theo từng từ: chỉ từ gõ đúng hoàn toàn mới được tính tốc độ, và gõ sai một từ không ảnh hưởng các từ sau. Thời gian mỗi lượt: <b>${dur} phút</b>.<br>MSSV là duy nhất, dùng để định danh bạn và lưu điểm cao nhất. Lần đầu nhập sẽ đăng ký họ tên cho MSSV đó; các lần sau phải nhập đúng họ tên.</p>
   ${err?`<p style="color:var(--bad)">${esc(err)}</p>`:''}
   <div class="row"><div class="grow"><label>Họ và tên</label><input id="nm" value="${esc(name)}" maxlength="40" placeholder="Nguyễn Văn A"></div><div class="grow"><label>MSSV (duy nhất)</label><input id="ms" value="${esc(mssv)}" maxlength="15" placeholder="TH12345" autocapitalize="characters" style="text-transform:uppercase"></div>
   <div class="grow"><label>Mã phòng (tuỳ chọn, để ghép đúng cặp)</label><input id="cd" maxlength="20" placeholder="Để trống = ghép tự động"></div></div>
   <div class="row" style="margin-top:14px"><button onclick="join(false)">⚔️ Vào phòng thi</button><button class="g" onclick="join(true)">Thi một mình</button></div></div>
+  <div class="card"><h3 style="margin:0 0 4px">🏫 Thi theo lớp</h3><p class="mu" style="margin-top:0">Giám thị cung cấp mã lớp và mật khẩu. Cả lớp vào phòng chờ và thi cùng lúc trên cùng một đoạn văn. (Nhập Họ tên và MSSV ở trên.)</p>
+  <div class="row"><div class="grow"><label>Mã lớp</label><input id="cc" value="${esc(clsCode)}" maxlength="20" placeholder="SE1801" style="text-transform:uppercase"></div><div class="grow"><label>Mật khẩu lớp</label><input id="cp" type="password" maxlength="30" autocomplete="off"></div><button onclick="joinClass()">Vào lớp thi</button></div></div>
   <div class="card mu">Giữ đúng dấu tiếng Việt, dùng Space để sang từ tiếp theo và Backspace để sửa lỗi. Từ nào gõ sai sẽ tô đỏ sau khi bạn bấm Space. Dán văn bản bị chặn.</div>`;
+  else if(view==='wait'&&S.cls)a.innerHTML=`<div class="card" style="text-align:center"><div class="big">🏫</div><h2>Lớp ${esc(S.cls.code)}</h2><p>Bạn đã vào lớp. Đang chờ giám thị bắt đầu…</p><p class="mu">Số sinh viên đã vào: <b>${S.cls.count}</b></p><button class="g" onclick="leave()">Thoát lớp</button></div>`;
   else if(view==='wait')a.innerHTML=`<div class="card" style="text-align:center"><div class="big">⏳</div><h2>Đang chờ đối thủ…</h2><p class="mu">Mã phòng: <b>${esc(S.code)}</b>. Người thứ hai nhập cùng mã (hoặc để trống mã) sẽ vào phòng này.</p><button class="g" onclick="leave()">Hủy</button></div>`;
   else if(view==='game'){if(!ta)build(a);update()}
   else if(view==='admin')adminView(a);
   else if(view==='lb')lbView(a);
+  else if(view==='cls')clsView(a);
   else if(view==='spec')a.innerHTML='<div id="sp"></div><div class="row" style="justify-content:center;margin-top:14px"><button id="cb" onclick="celebrateSP()" style="display:none">🎉 Tung hô người thắng</button></div>',updSpec();
 }
 function build(a){
-  a.innerHTML=`<div id="tm" class="timer"></div><div class="pl" id="cards"></div><div id="txt" class="txt"></div>
+  a.innerHTML=`<div id="tm" class="timer"></div><div class="pl" id="cards"></div><div id="clsb"></div><div id="txt" class="txt"></div>
   <textarea id="ta" class="in" disabled autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Bắt đầu gõ khi đếm ngược kết thúc…"></textarea><div id="res"></div>`;
   ta=$('#ta');let comp=false;
   const push=()=>{
     if(S&&S.status==='running'){
       const n=ta.value.replace(/\n/g,' ').replace(/^\s+/,'').replace(/\s{2,}/g,' ');
       if(n!==ta.value)ta.value=n;
-      tx({t:'typed',text:n});paint()
+      if(S.cls){cval=n;if(!ctm)ctm=setTimeout(()=>{ctm=null;tx({t:'typed',text:cval})},200)}else tx({t:'typed',text:n});paint()
     }else ta.value=''
   };
   ta.addEventListener('keydown',e=>{if(e.key==='Enter')e.preventDefault()});
@@ -125,17 +143,28 @@ function paint(){
   const el=$('#txt');el.innerHTML=h||'<span class="mu">Đoạn văn sẽ hiện khi bắt đầu…</span>';
   const c=el.querySelector('.cur');if(c)el.scrollTop=Math.max(0,c.offsetTop-110);
 }
+function clsBoard(){const c=S.cls;return `<div class="card" style="margin-top:12px"><b>🏫 Lớp ${esc(c.code)} · Hạng của bạn: ${c.rank}/${c.total}</b><table style="margin-top:8px">${c.top.slice(0,5).map((e,i)=>`<tr><td>${i+1}</td><td style="text-align:left">${esc(e.name)}</td><td>${e.wpm} WPM</td><td><b>${e.score}</b></td></tr>`).join('')}</table></div>`}
+function clsResult(){
+  const c=S.cls,p=S.players[0],medal=['🥇','🥈','🥉'];
+  $('#res').innerHTML=`<div class="card"><div class="win">${c.rank===1?'🏆 ':''}Hạng ${c.rank}/${c.total}</div>
+  <table><tr><th>Thí sinh</th><th>WPM</th><th>Chính xác</th><th>Ký tự đúng</th><th>Điểm</th></tr><tr><td>${esc(p.name)}<br><span class="mu">${esc(p.mssv)}</span></td><td>${p.wpm}</td><td>${p.acc}%</td><td>${p.correct}/${p.len}</td><td><b>${p.score}</b></td></tr></table>
+  <h3>Top ${c.top.length} của lớp</h3><table>${c.top.map((e,i)=>`<tr><td>${medal[i]||i+1}</td><td style="text-align:left">${esc(e.name)}<br><span class="mu">${esc(e.mssv)}</span></td><td>${e.wpm} WPM</td><td>${e.acc}%</td><td><b>${e.score}</b></td></tr>`).join('')}</table>
+  <p class="mu" style="text-align:center">Điểm đã được ghi vào bảng xếp hạng và thống kê của lớp.</p>
+  <div class="row" style="justify-content:center"><button onclick="leave()">Về trang chủ</button></div></div>`;
+  $('#res').scrollIntoView({behavior:'smooth'});
+}
 function update(){
   if(!S||!ta)return;const el=performance.now()-S.t0,st=S.status,me=S.me;
   $('#tm').textContent=st==='countdown'?'Chuẩn bị… '+Math.max(1,Math.ceil((S.toStart-el)/1000)):st==='running'?fmt(S.toEnd-el-300):'Hết giờ';
   $('#cards').innerHTML=S.players.map((p,i)=>card(p,i===me)).join('');
+  $('#clsb').innerHTML=S.cls?clsBoard():'';
   const canType=st==='running'&&!S.players[me].done;
   ta.disabled=!canType;if(canType&&!focused){focused=true;ta.focus()}
   if(S.text)paint();else paint0();
   if(st==='finished'&&!$('#res').innerHTML)result();
 }
 function paint0(){$('#txt').innerHTML='<span class="mu">Đoạn văn sẽ hiện khi bắt đầu…</span>'}
-function result(){
+function result(){if(S.cls)return clsResult();
   const w=S.result.winner,P=S.players;
   const head=S.solo?'Kết quả thi một mình':w<0?'🤝 Hòa!':'🏆 '+esc(P[w].name)+(w===S.me?' (bạn)':'')+' chiến thắng!';
   $('#res').innerHTML=`<div class="card"><div class="win">${head}</div><table><tr><th>Thí sinh</th><th>WPM</th><th>Chính xác</th><th>Ký tự đúng</th><th>Điểm</th></tr>
@@ -172,16 +201,68 @@ function celebrate(w){
 function fanfare(){try{const ac=new(window.AudioContext||window.webkitAudioContext)();[523,659,784,1047,784,1047].forEach((f,i)=>{const o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime+i*.16;o.type='triangle';o.frequency.value=f;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(.2,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.start(t);o.stop(t+.32)})}catch(e){}}
 function openLB(){view='lb';lbDur=dur;tx({t:'lb'});render()}
 function setLB(d){lbDur=d;render()}
-function lbView(a){
+function lbTabs(){return `<div class="tabs">${[1,2,3,4,5].map(d=>`<button class="${d===lbDur?'':'g'}" onclick="setLB(${d})">${d} phút</button>`).join('')}<button class="${lbDur==='cls'?'':'g'}" onclick="setLB('cls')">👥 Theo lớp</button></div>`}
+function pickCls(v){clsSel=v;CR=null;if(v)tx({t:'clsres',id:+v});render()}
+function clsLb(a){
+  const L=LBD&&LBD.classes;
+  a.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🏆 Bảng xếp hạng</h2><button class="g" onclick="tx({t:'lb'})">↻ Làm mới</button></div>${lbTabs()}
+  ${L===undefined?'<p class="mu">Đang tải…</p>':!L.length?'<p class="mu">Chưa có buổi thi theo lớp nào.</p>':`<label>Chọn buổi thi theo lớp</label><select onchange="pickCls(this.value)"><option value="">— Chọn —</option>${L.map(c=>`<option value="${c.id}" ${String(c.id)===String(clsSel)?'selected':''}>${esc(c.code)} · ${c.dur} phút · ${new Date(c.at).toLocaleString('vi-VN')} · ${c.count} sv</option>`).join('')}</select>`}
+  ${clsSel&&!CR?'<p class="mu">Đang tải kết quả…</p>':''}${CR?clsDetail(CR):''}</div>`;
+}
+function clsDetail(s){
+  const me=mssv||'';
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:14px 0">${[['Sinh viên',s.count],['Hoàn thành bài',s.finished],['Điểm trung bình',s.avgScore],['WPM trung bình',s.avgWpm],['Chính xác TB',s.avgAcc+'%'],['Điểm cao nhất',s.maxScore]].map(x=>`<div class="p"><div class="mu">${x[0]}</div><b style="font-size:22px">${x[1]}</b></div>`).join('')}</div>
+  <div style="overflow-x:auto"><table><tr><th>Hạng</th><th style="text-align:left">Thí sinh</th><th>MSSV</th><th>Điểm</th><th>WPM</th><th>Chính xác</th><th>Ký tự đúng</th></tr>${s.results.map(r=>`<tr class="${r.mssv===me?'me-row':''}"><td>${['🥇','🥈','🥉'][r.rank-1]||r.rank}</td><td style="text-align:left">${esc(r.name)}${r.left?' <span class="tag">bỏ thi</span>':''}</td><td>${esc(r.mssv)}</td><td><b>${r.score}</b></td><td>${r.wpm}</td><td>${r.acc}%</td><td>${r.correct}/${r.len}</td></tr>`).join('')}</table></div>
+  <div class="row" style="margin-top:12px"><button class="g" onclick="clsCsv()">Xuất CSV</button></div>`;
+}
+function clsCsv(){
+  const q=v=>'"'+String(v).replace(/"/g,'""')+'"',L=['Hạng,MSSV,Họ tên,Điểm,WPM,Chính xác,Ký tự đúng,Ghi chú'];
+  CR.results.forEach(r=>L.push([r.rank,r.mssv,r.name,r.score,r.wpm,r.acc,r.correct+'/'+r.len,r.left?'Bỏ thi':''].map(q).join(',')));
+  const u=URL.createObjectURL(new Blob(['\ufeff'+L.join('\n')],{type:'text/csv'})),l=document.createElement('a');
+  l.href=u;l.download='lop-'+CR.code+'.csv';l.click();URL.revokeObjectURL(u);
+}
+function lbView(a){if(lbDur==='cls')return clsLb(a);
   const L=LBD?LBD[lbDur]||[]:null,medal=['🥇','🥈','🥉'],mine=mssv||'';
   a.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🏆 Bảng xếp hạng</h2><button class="g" onclick="tx({t:'lb'})">↻ Làm mới</button></div>
   <p class="mu">Điểm cao nhất của mỗi thí sinh (tính cả thi đối kháng và thi một mình), xếp riêng theo từng loại thời gian thi.</p>
-  <div class="tabs">${[1,2,3,4,5].map(d=>`<button class="${d===lbDur?'':'g'}" onclick="setLB(${d})">${d} phút</button>`).join('')}</div>
+  ${lbTabs()}
   ${L===null?'<p class="mu">Đang tải…</p>':L.length?`<div style="overflow-x:auto"><table><tr><th>Hạng</th><th style="text-align:left">Thí sinh</th><th>MSSV</th><th>Điểm</th><th>WPM</th><th>Chính xác</th><th>Ngày</th></tr>
   ${L.map((e,i)=>`<tr class="${e.mssv===mine?'me-row':''}"><td>${medal[i]||i+1}</td><td style="text-align:left">${esc(e.name)}</td><td>${esc(e.mssv)}</td><td><b>${e.score}</b></td><td>${e.wpm}</td><td>${e.acc}%</td><td>${new Date(e.at).toLocaleDateString('vi-VN')}</td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có kết quả nào cho loại thời gian này.</p>'}</div>`;
 }
 function renStu(k){const n=prompt('Họ tên mới cho '+k+':');if(n)tx({t:'renstudent',mssv:k,name:n})}
 function delStu(k){if(confirm('Xóa sinh viên '+k+' và điểm trong bảng xếp hạng? MSSV này sẽ được đăng ký lại từ đầu.'))tx({t:'delstudent',mssv:k})}
+function admClsCard(){
+  const c=A.cls,d=A.cfg.duration,SS=A.sessions||[];
+  return `<div class="card"><h2 style="margin-top:0">🏫 Thi theo lớp</h2>`+(c?`<p>Đang có lớp <b>${esc(c.code)}</b> (${c.total} sinh viên, trạng thái: ${{open:'đang chờ',countdown:'chuẩn bị',running:'đang thi'}[c.status]||c.status}). Mỗi lúc chỉ có 1 lớp thi.</p><button onclick="openCls()">Mở màn hình điều khiển</button>`:
+  `<div class="row"><div class="grow"><label>Mã lớp</label><input id="kc" maxlength="20" placeholder="SE1801" style="text-transform:uppercase"></div><div class="grow"><label>Mật khẩu lớp</label><input id="kp" maxlength="30" placeholder="ít nhất 3 ký tự"></div></div>
+  <div class="row" style="margin-top:10px"><div><label>Thời gian</label><select id="kd">${[1,2,3,4,5].map(m=>`<option value="${m}" ${m===d?'selected':''}>${m} phút</option>`).join('')}</select></div><div><label>Sĩ số tối đa</label><input id="kx" type="number" min="2" max="100" value="60" style="width:100px"></div><div class="grow"><label>Đoạn văn</label><select id="kt"><option value="-1">Ngẫu nhiên</option>${A.cfg.texts.map((t,i)=>`<option value="${i}">${esc(t.title||'Đoạn '+(i+1))}</option>`).join('')}</select></div></div>
+  <div class="row" style="margin-top:12px"><button onclick="createCls()">Tạo phòng thi lớp</button></div>
+  <p class="mu">Sinh viên nhập mã lớp và mật khẩu ở trang chủ để vào phòng chờ. Khi bạn bấm “Bắt đầu thi”, cả lớp thi cùng lúc và không nhận thêm người. Mỗi lúc chỉ có 1 lớp thi.</p>`)
+  +(SS.length?`<h3>Các buổi thi theo lớp đã lưu</h3><div style="max-height:260px;overflow:auto"><table><tr><th>Lớp</th><th>Thời gian</th><th>Sĩ số</th><th>Điểm TB</th><th></th></tr>${SS.map(x=>`<tr><td>${esc(x.code)}</td><td>${new Date(x.at).toLocaleString('vi-VN')}<br><span class="mu">${x.dur} phút</span></td><td>${x.count}</td><td>${x.avgScore}</td><td><button class="g" onclick="viewSess(${x.id})">Xem</button>${A.role===2?'':` <button class="g" onclick="delSess(${x.id})">✕ Xóa</button>`}</td></tr>`).join('')}</table></div>`:'')+`</div>`;
+}
+function createCls(){wantCls=true;tx({t:'clscreate',code:$('#kc').value,password:$('#kp').value,dur:+$('#kd').value,max:+$('#kx').value,textIdx:+$('#kt').value})}
+function openCls(){view='cls';render()}
+function delSess(id){if(confirm('Xóa thống kê buổi thi này? (Điểm đã ghi vào bảng xếp hạng chung vẫn giữ nguyên.)'))tx({t:'delsession',id})}
+function resetSess(){if(confirm('Xóa toàn bộ thống kê thi theo lớp? Không thể hoàn tác.'))tx({t:'resetsessions'})}
+function clsView(a){
+  a.innerHTML=`<div id="cl"></div><div class="row" style="justify-content:center;margin-top:14px">
+  <button id="b1" onclick="tx({t:'clsstart'})">▶ Bắt đầu thi</button><button id="b2" class="g" onclick="if(confirm('Kết thúc sớm và chốt điểm?'))tx({t:'clsend'})">⏹ Kết thúc sớm</button>
+  <button id="b3" class="g" onclick="if(confirm('Hủy lớp thi này?'))tx({t:'clscancel'})">✖ Hủy lớp</button><button id="b4" onclick="celTop()">🎉 Tung hô người đứng đầu</button></div>`;
+  updCls();
+}
+function celTop(){if(CA&&CA.players.length)celebrate(CA.players[0])}
+function updCls(){
+  const el=$('#cl');if(!el)return;
+  if(!CA){el.innerHTML='<div class="card mu">Chưa có lớp thi nào.</div>';return}
+  const e=performance.now()-CA.t0,st=CA.status;
+  const lb={open:'Đang chờ sinh viên',countdown:'Chuẩn bị',running:'Đang thi',finished:'Đã kết thúc',cancelled:'Đã hủy'}[st]||st;
+  const tm=st==='open'?'Đang chờ…':st==='countdown'?'Chuẩn bị… '+Math.max(1,Math.ceil((CA.toStart-e)/1000)):st==='running'?fmt(CA.toEnd-e-300):st==='finished'?'Hết giờ':'Đã hủy';
+  el.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🏫 Lớp ${esc(CA.code)}</h2><span class="tag">${lb}</span></div><p class="mu" style="margin:6px 0 0">Mật khẩu: <b>${esc(CA.password)}</b> · ${CA.dur} phút · Sĩ số: <b>${CA.total}</b>/${CA.max}</p></div><div class="timer">${tm}</div>
+  <div class="card" style="padding:8px;overflow-x:auto"><table><tr><th>#</th><th style="text-align:left">Họ tên</th><th>MSSV</th><th>WPM</th><th>Chính xác</th><th>Tiến độ</th><th>Điểm</th><th></th></tr>${CA.players.map((p,i)=>`<tr><td>${i+1}</td><td style="text-align:left">${esc(p.name)}</td><td>${esc(p.mssv)}</td><td>${p.wpm}</td><td>${p.acc}%</td><td>${Math.round(pct(p.correct,p.len))}%</td><td><b>${p.score}</b></td><td>${p.left?'Bỏ thi':p.done?'✔':p.disc?'Mất kết nối':''}</td></tr>`).join('')||'<tr><td colspan="8" class="mu">Chưa có sinh viên vào lớp.</td></tr>'}</table></div>`;
+  const sh=(i,v)=>{const b=$(i);if(b)b.style.display=v?'':'none'};
+  sh('#b1',st==='open');sh('#b2',st==='running');sh('#b3',st==='open'||st==='countdown');sh('#b4',st==='finished'&&CA.players.length&&CA.players[0].score>0);
+  const b1=$('#b1');if(b1)b1.disabled=!CA.total;
+}
 let admDur=2;
 function admLbInner(){const L=(A.lb&&A.lb[admDur])||[];return `<div class="tabs">${[1,2,3,4,5].map(d=>`<button class="${d===admDur?'':'g'}" onclick="setAdmLb(${d})">${d} phút</button>`).join('')}</div>`+(L.length?`<div style="max-height:320px;overflow:auto"><table><tr><th>Hạng</th><th style="text-align:left">Thí sinh</th><th>MSSV</th><th>Điểm</th><th></th></tr>${L.map((e,i)=>`<tr><td>${i+1}</td><td style="text-align:left">${esc(e.name)}</td><td>${esc(e.mssv)}</td><td>${e.score}</td><td><button class="g" onclick="delLB('${esc(e.mssv)}',${admDur})">✕ Xóa</button></td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có dữ liệu.</p>')}
 function setAdmLb(d){admDur=d;$('#alb').innerHTML=admLbInner()}
@@ -192,7 +273,10 @@ function resetHist(){if(confirm('Xóa toàn bộ lịch sử trận đấu? Khô
 function resetAll(){const c=prompt('Xóa TOÀN BỘ sinh viên, bảng xếp hạng và lịch sử? Gõ XOA để xác nhận:');if(c==='XOA')tx({t:'resetall',confirm:'XOA'})}
 function restoreFile(i){const f=i.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(confirm('Khôi phục sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại. Tiếp tục?'))tx({t:'restore',data:d})}catch(e){alert('File sao lưu không hợp lệ')}i.value=''};r.readAsText(f)}
 function saveBackup(d){const u=URL.createObjectURL(new Blob([JSON.stringify(d,null,1)],{type:'application/json'})),l=document.createElement('a');l.href=u;l.download='typing-pro-backup-'+new Date().toISOString().slice(0,10)+'.json';l.click();URL.revokeObjectURL(u)}
-function adminView(a){
+function backFromLB(){if(A){view='admin';render()}else reset()}
+function viewSess(id){clsSel=String(id);CR=null;lbDur='cls';view='lb';tx({t:'lb'});tx({t:'clsres',id});render()}
+function procView(a){a.innerHTML=`<div class="card"><b>Giám thị lớp</b> <span class="mu">— bạn chỉ có quyền quản lý thi theo lớp: tạo lớp, chờ sinh viên vào, bắt đầu thi và xem kết quả.</span></div>${admClsCard()}`}
+function adminView(a){if(A.role===2)return procView(a);
   const txt=A.cfg.texts.map(t=>t.title+'\n'+t.text).join('\n---\n');
   const H=A.history.slice().reverse();
   a.innerHTML=`${A.persist?'<div class="card" style="border-color:var(--ok)">✅ Dữ liệu được lưu vĩnh viễn trên cơ sở dữ liệu.</div>':'<div class="card" style="border-color:var(--bad)">⚠️ Chưa kết nối cơ sở dữ liệu: dữ liệu sẽ MẤT khi server khởi động lại. Xem README để cấu hình Upstash (miễn phí).</div>'}<div class="card"><h2 style="margin-top:0">Cấu hình cuộc thi</h2>
@@ -201,8 +285,9 @@ function adminView(a){
   <textarea id="tx" class="f" rows="10">${esc(txt)}</textarea>
   <div class="row" style="margin-top:12px"><button onclick="saveCfg()">Lưu cấu hình</button><span id="sv" class="mu"></span></div></div>
   <div class="card"><h2 style="margin-top:0">Phòng đang hoạt động</h2>${A.live.length?`<table>${A.live.map(r=>`<tr><td>${r.names.map(esc).join(' vs ')||'…'}</td><td>${{waiting:'Đang chờ',countdown:'Chuẩn bị',running:'Đang thi'}[r.status]||r.status}</td><td><button class="g" onclick="watch(${r.id})">👁 Theo dõi</button></td></tr>`).join('')}</table>`:'<p class="mu">Không có phòng nào.</p>'}</div>
+  ${admClsCard()}
   <div class="card"><h2 style="margin-top:0">Quản lý dữ liệu</h2>
-  <div class="row"><select id="rd" style="max-width:130px">${[1,2,3,4,5].map(m=>`<option value="${m}">${m} phút</option>`).join('')}</select><button class="g" onclick="resetLBd()">Xóa bảng xếp hạng mốc này</button><button class="g" onclick="resetLB()">Xóa toàn bộ bảng xếp hạng</button><button class="g" onclick="resetHist()">Xóa lịch sử trận đấu</button></div>
+  <div class="row"><select id="rd" style="max-width:130px">${[1,2,3,4,5].map(m=>`<option value="${m}">${m} phút</option>`).join('')}</select><button class="g" onclick="resetLBd()">Xóa bảng xếp hạng mốc này</button><button class="g" onclick="resetLB()">Xóa toàn bộ bảng xếp hạng</button><button class="g" onclick="resetHist()">Xóa lịch sử trận đấu</button><button class="g" onclick="resetSess()">Xóa thống kê thi theo lớp</button></div>
   <div class="row" style="margin-top:10px"><button class="g" onclick="tx({t:'backup'})">⬇ Tải bản sao lưu</button><label class="mu" style="margin:0">⬆ Khôi phục từ file: <input type="file" accept=".json" style="width:auto" onchange="restoreFile(this)"></label><button style="background:var(--bad)" onclick="resetAll()">⚠ Xóa toàn bộ dữ liệu</button></div></div>
   <div class="card"><h2 style="margin-top:0">Bảng xếp hạng (quản lý từng dòng)</h2><div id="alb">${admLbInner()}</div></div>
   <div class="card"><h2 style="margin-top:0">Sinh viên đã đăng ký (${A.students.length})</h2>${A.students.length?`<div style="max-height:320px;overflow:auto"><table><tr><th>MSSV</th><th style="text-align:left">Họ tên</th><th></th></tr>${A.students.map(x=>`<tr><td>${esc(x.mssv)}</td><td style="text-align:left">${esc(x.name)}</td><td><button class="g" onclick="renStu('${esc(x.mssv)}')">Sửa tên</button> <button class="g" onclick="delStu('${esc(x.mssv)}')">Xóa</button></td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có sinh viên nào.</p>'}</div>
@@ -220,6 +305,6 @@ function csv(){
   const u=URL.createObjectURL(new Blob(['\ufeff'+L.join('\n')],{type:'text/csv'})),l=document.createElement('a');
   l.href=u;l.download='ket-qua-typing-pro.csv';l.click();URL.revokeObjectURL(u);
 }
-setInterval(()=>{if(view==='spec')updSpec()},250);
+setInterval(()=>{if(view==='spec')updSpec();else if(view==='cls')updCls()},250);
 render();connect();
 </script></body></html>

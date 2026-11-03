@@ -26,6 +26,18 @@ Trang chủ → “🛠 Giám thị” → nhập mật khẩu; mật khẩu nà
 ## Chức năng của giám thị 1
 - Chỉnh thời gian 1–5 phút, soạn đoạn văn.
 - Theo dõi trực tiếp một phòng thi, tung hô người thắng.
-- **Thi theo lớp**: tạo lớp (mã lớp, mật khẩu, sĩ số tối đa; **thời gian cố định 5 phút**; giám thị 1 có thể chọn đoạn văn, giám thị 2 luôn nhận đoạn ngẫu nhiên từ kho do giám thị 1 quản lý) → sinh viên nhập mã + mật khẩu ở trang chủ vào phòng chờ → bấm “Bắt đầu thi” để cả lớp thi cùng lúc, xem bảng xếp hạng trực tiếp, tung hô người đứng đầu. Mỗi lúc chỉ có 1 lớp thi. Kết quả mỗi buổi được lưu thành thống kê (xem ở Bảng xếp hạng → “👥 Theo lớp”) và điểm cũng được ghi vào bảng xếp hạng chung. Nếu server khởi động lại giữa buổi thi, lớp đang mở sẽ mất và cần tạo lại.
+- **Thi theo lớp**: tạo lớp (mã lớp, mật khẩu, sĩ số tối đa; **thời gian cố định 5 phút**; **mã lớp phải duy nhất**, không dùng lại mã của buổi thi đã lưu; giám thị 1 có thể chọn đoạn văn, giám thị 2 luôn nhận đoạn ngẫu nhiên từ kho do giám thị 1 quản lý) → sinh viên nhập mã + mật khẩu ở trang chủ vào phòng chờ → bấm “Bắt đầu thi” để cả lớp thi cùng lúc, xem bảng xếp hạng trực tiếp, tung hô người đứng đầu. Mỗi lúc chỉ có 1 lớp thi. Kết quả mỗi buổi được lưu thành thống kê (xem ở Bảng xếp hạng → “👥 Theo lớp”) và điểm cũng được ghi vào bảng xếp hạng chung. Nếu server khởi động lại giữa buổi thi, lớp đang mở sẽ mất và cần tạo lại.
 - Quản lý dữ liệu: xóa từng dòng bảng xếp hạng, xóa theo mốc thời gian, xóa toàn bộ bảng xếp hạng, xóa lịch sử, xóa thống kê thi theo lớp, xóa từng sinh viên / sửa tên, **xóa toàn bộ dữ liệu** (gõ XOA để xác nhận).
 - Tải bản sao lưu (.json) và khôi phục từ file.
+
+
+## Đăng nhập giám thị được ghi nhớ
+Sau khi nhập đúng mật khẩu, trình duyệt lưu một cookie (token ký số, hiệu lực 12 giờ). Tải lại trang vẫn là giám thị; bấm logo hoặc “Trang chủ” để về trang chủ mà không thoát. Muốn thoát hẳn thì bấm “Đăng xuất”. Đổi mật khẩu (ADMIN_PASS / PROCTOR_PASS) hoặc đặt biến `SESSION_SECRET` sẽ làm mọi token cũ hết hiệu lực.
+
+## Chống gian lận (extension tự gõ, dán, bơm chữ)
+Máy chủ là nơi quyết định, trình duyệt gửi kèm số liệu bàn phím thật:
+- Chỉ tính phím do người dùng thật bấm (`isTrusted`); phím/sự kiện nhập do script hoặc extension tạo ra bị đếm và bị bỏ qua.
+- Hủy điểm (hiện cờ 🚩, không vào bảng xếp hạng) khi: tốc độ vượt giới hạn con người (>35 ký tự/giây trong ~1,5 giây hoặc >18 ký tự/giây trong ~3–6 giây), chữ xuất hiện nhưng số phím thật quá ít, nhịp gõ đều như máy, có ≥3 sự kiện nhập giả lập, hoặc trình duyệt bị điều khiển tự động (webdriver).
+- Cảnh báo mềm ⚠ (giám thị thấy, không tự hủy): rời tab/cửa sổ từ 4 lần, hoặc trình duyệt không gửi dữ liệu kiểm tra.
+- Đoạn văn không nằm dạng chữ trong DOM (extension đọc nội dung trang sẽ không lấy được); chặn dán, sao chép, kéo thả, chuột phải.
+- Lưu ý: không có cách nào ở trình duyệt chống tuyệt đối. Với kỳ thi quan trọng, nên **chặn cài extension bằng chính sách Chrome** trên máy phòng thi (ExtensionInstallBlocklist = "*") hoặc cho thi bằng cửa sổ Khách (Guest) không có extension, và dùng bộ gõ của hệ điều hành (Unikey, EVKey) thay vì extension gõ tiếng Việt.

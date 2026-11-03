@@ -1,8 +1,17 @@
 // Typing Pro - máy chủ: ghép cặp, giữ đồng hồ, chấm điểm (server-authoritative)
 const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
+const crypto = require('crypto');
 const PORT = process.env.PORT || 3000, ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
 // Giám thị 1 (admin, toàn quyền): ADMIN_PASS. Giám thị 2 (chỉ quản lý thi theo lớp): PROCTOR_PASS (không đặt = tắt vai trò này).
+const SECRET = process.env.SESSION_SECRET || (ADMIN_PASS + '|' + (process.env.PROCTOR_PASS || '') + '|typing-pro');
+const makeToken = role => { const b = role + '.' + (Date.now() + 12 * 3600 * 1000); return b + '.' + crypto.createHmac('sha256', SECRET).update(b).digest('hex'); };
+function verifyToken(tok) {
+  const [role, exp, sig] = String(tok || '').split('.'); if (!sig || !(+exp > Date.now())) return 0;
+  const ok = crypto.createHmac('sha256', SECRET).update(role + '.' + exp).digest('hex');
+  try { if (crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(ok))) return role === '1' ? 1 : (role === '2' && process.env.PROCTOR_PASS ? 2 : 0); } catch (e) {}
+  return 0;
+}
 const CLASS_DUR = 5; // thi theo lớp: cố định 5 phút
 const PROCTOR_PASS = process.env.PROCTOR_PASS || '';
 // ---- Lưu trữ: Upstash Redis (vĩnh viễn) nếu có biến môi trường, nếu không thì lưu file (mất khi Render khởi động lại) ----
@@ -67,7 +76,7 @@ function lbData() {
 const server = http.createServer((req, res) => {
   fs.readFile(path.join(__dirname, 'public', 'index.html'), (e, d) => {
     if (e) { res.writeHead(500); return res.end('Lỗi'); }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(d);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(d);
   });
 });
 const wss = new WebSocketServer({ server });
@@ -81,6 +90,27 @@ const send = (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); }
 
 // Chấm điểm theo từ (giống Monkeytype / 10FastFingers): từ gõ sai chỉ mất điểm của chính từ đó,
 // không làm lệch các từ phía sau. Chỉ từ gõ đúng hoàn toàn mới tính vào tốc độ.
+// Chống gian lận: kết hợp số liệu bàn phím thật do trình duyệt gửi (keydown isTrusted) với kiểm tra tốc độ/nhịp gõ ở máy chủ.
+function checkCheat(p, m, now) {
+  if (p.cheat) return true;
+  const len = p.typed.length, tl = m.tl;
+  (p.hist = p.hist || []).push({ t: now, len });
+  while (p.hist.length > 2 && now - p.hist[0].t > 6000) p.hist.shift();
+  const h0 = p.hist[0], dt = now - h0.t; let why = '';
+  const h1 = p.hist.find(x => x.t >= now - 1500); // cửa sổ ngắn: dán/bơm chữ cực nhanh
+  if (h1 && now - h1.t >= 400 && (len - h1.len) / ((now - h1.t) / 1000) > 35) why = 'Tốc độ gõ vượt giới hạn của con người';
+  else if (dt >= 3000 && (len - h0.len) / (dt / 1000) > 18) why = 'Tốc độ gõ vượt giới hạn của con người';
+  if (tl && !why) {
+    const kd = +tl.kd || 0, sd = +tl.sd, sy = +tl.sy || 0, bl = +tl.bl || 0;
+    if (tl.wd) why = 'Trình duyệt bị điều khiển tự động';
+    else if (len >= 40 && kd < len * 0.5) why = 'Chữ xuất hiện không qua thao tác bàn phím thật';
+    else if (kd >= 60 && sd >= 0 && sd < 12) why = 'Nhịp gõ đều như máy';
+    else if (sy >= 3) why = 'Có sự kiện nhập giả lập (không phải bàn phím thật)';
+    if (!why && bl >= 4) p.warn = 'Rời khỏi trang ' + bl + ' lần';
+  } else if (!tl && len >= 30) p.warn = 'Thiếu dữ liệu kiểm tra từ trình duyệt';
+  if (why) { p.cheat = why; p.doneAt = p.doneAt || now; return true; }
+  return false;
+}
 function stat(p, r, now) {
   const T = r.words, tw = p.typed.split(' ');
   let c = 0, tot = 0;
@@ -93,7 +123,7 @@ function stat(p, r, now) {
   });
   const end = Math.min(p.doneAt || now, r.endAt, now), m = Math.max(0, end - r.startAt) / 60000;
   const wpm = m > 0.008 ? c / 5 / m : 0, acc = tot ? 100 * c / tot : 100;
-  return { name: p.name, mssv: p.mssv, correct: c, len: r.text.length, wpm: +wpm.toFixed(1), acc: +acc.toFixed(1), score: Math.round(wpm * (acc / 100) ** 2), done: !!p.doneAt };
+  return { name: p.name, mssv: p.mssv, correct: c, len: r.text.length, wpm: +wpm.toFixed(1), acc: +acc.toFixed(1), score: p.cheat ? 0 : Math.round(wpm * (acc / 100) ** 2), done: !!p.doneAt, cheat: p.cheat || '', warn: p.warn || '' };
 }
 function specMsg(r, now, ps) {
   return { t: 'spec', id: r.id, status: r.status, solo: r.solo, dur: r.dur, players: ps, toStart: r.startAt ? r.startAt - now : 0, toEnd: r.endAt ? r.endAt - now : 0, result: r.result || null };
@@ -192,9 +222,21 @@ function join(ws, m) {
 // ================= THI THEO LỚP (tối đa 1 lớp hoạt động) =================
 let AC = null;
 const rankCmp = (a, b) => b.s.score - a.s.score || b.s.acc - a.s.acc || b.s.correct - a.s.correct;
-const slim = (s, p) => ({ name: s.name, mssv: s.mssv, score: s.score, wpm: s.wpm, acc: s.acc, correct: s.correct, len: s.len, done: s.done, disc: !!p.disc, left: !!p.left });
+const slim = (s, p) => ({ name: s.name, mssv: s.mssv, score: s.score, wpm: s.wpm, acc: s.acc, correct: s.correct, len: s.len, done: s.done, disc: !!p.disc, left: !!p.left, cheat: s.cheat, warn: s.warn });
 const clsSnap = (c, now) => c.players.map(p => ({ p, s: stat(p, c, now) })).sort(rankCmp);
+function classTop() {
+  const best = new Map();
+  CS.forEach(x => x.results.forEach(r => {
+    if (r.left || r.cheat || !r.score) return; const b = best.get(r.mssv);
+    if (!b || r.score > b.score || (r.score === b.score && r.acc > b.acc)) best.set(r.mssv, { mssv: r.mssv, name: r.name, code: x.code, score: r.score, wpm: r.wpm, acc: r.acc });
+  }));
+  return [...best.values()].sort((a, b) => b.score - a.score || b.acc - a.acc).slice(0, 20);
+}
 const classSummaries = () => CS.slice().reverse().slice(0, 100).map(({ results, ...r }) => r);
+function grant(ws, role) {
+  if (role === 1) { procs.delete(ws); admins.add(ws); } else { admins.delete(ws); unwatch(ws); procs.add(ws); }
+  pushAdmin(); if (AC) sendClsAdmin(AC);
+}
 function sendClsAdmin(c, extra) {
   const now = Date.now(), arr = clsSnap(c, now);
   const msg = Object.assign({ t: 'clsadmin', code: c.code, password: c.password, status: c.status, dur: c.dur, max: c.max, total: c.players.length,
@@ -217,6 +259,7 @@ function clsCreate(ws, m) {
   if (AC) return err('Đang có lớp "' + AC.code + '" hoạt động. Hãy kết thúc hoặc hủy lớp đó trước (mỗi lúc chỉ có 1 lớp thi).');
   const code = String(m.code || '').trim().toUpperCase(), pw = String(m.password || '').trim().slice(0, 30);
   if (!/^[A-Z0-9_-]{2,20}$/.test(code)) return err('Mã lớp gồm 2–20 ký tự: chữ, số, dấu - hoặc _.');
+  if (CS.some(x => x.code === code)) return err('Mã lớp "' + code + '" đã được dùng cho một buổi thi trước đó. Mỗi mã lớp chỉ dùng một lần, hãy đặt mã khác (hoặc nhờ giám thị 1 xóa thống kê buổi thi cũ).');
   if (pw.length < 3) return err('Mật khẩu lớp tối thiểu 3 ký tự.');
   const dur = CLASS_DUR, max = Math.min(100, Math.max(2, Math.round(+m.max) || 60));
   const ti = procs.has(ws) ? -1 : Math.round(+m.textIdx), t = cfg.texts[ti >= 0 && ti < cfg.texts.length ? ti : Math.floor(Math.random() * cfg.texts.length)];
@@ -235,9 +278,9 @@ function clsFinish(c) {
   if (c.status === 'finished' || c.status === 'cancelled') return;
   c.status = 'finished'; clearTimeout(c.t1); clearTimeout(c.t2); clearInterval(c.tick);
   const now = Date.now(), arr = clsSnap(c, now);
-  const results = arr.map((x, i) => ({ rank: i + 1, mssv: x.s.mssv, name: x.s.name, score: x.s.score, wpm: x.s.wpm, acc: x.s.acc, correct: x.s.correct, len: x.s.len, done: x.s.done, left: !!x.p.left }));
+  const results = arr.map((x, i) => ({ rank: i + 1, mssv: x.s.mssv, name: x.s.name, score: x.s.score, wpm: x.s.wpm, acc: x.s.acc, correct: x.s.correct, len: x.s.len, done: x.s.done, left: !!x.p.left, cheat: x.s.cheat }));
   arr.forEach(x => { if (!x.p.left) recordLB(x.s, c.dur); }); saveLB();
-  const ok = results.filter(r => !r.left), avg = k => ok.length ? Math.round(ok.reduce((a, r) => a + r[k], 0) / ok.length * 10) / 10 : 0;
+  const ok = results.filter(r => !r.left && !r.cheat), avg = k => ok.length ? Math.round(ok.reduce((a, r) => a + r[k], 0) / ok.length * 10) / 10 : 0;
   const sess = { id: Date.now(), code: c.code, dur: c.dur, at: c.startAt || now, count: ok.length, finished: ok.filter(r => r.done).length,
     avgScore: avg('score'), avgWpm: avg('wpm'), avgAcc: avg('acc'), maxScore: ok.length ? Math.max(...ok.map(r => r.score)) : 0, results };
   CS.push(sess); if (CS.length > 300) CS.shift(); save('sessions');
@@ -281,6 +324,7 @@ function clsTyped(ws, m) {
   const v = String(m.text || '').normalize('NFC').replace(/\s+/g, ' ').replace(/^ /, '').slice(0, c.text.length + 40);
   if (v.length - p.typed.length > 25) return send(ws, { t: 'resync', text: p.typed });
   p.typed = v;
+  if (checkCheat(p, m, Date.now())) { send(ws, { t: 'cheat', reason: p.cheat }); sendClsPlayers(c, false, p); if (c.players.every(x => x.doneAt)) clsFinish(c); return; }
   const tw = v.split(' ');
   if (tw.length === c.words.length && tw[tw.length - 1] === c.words[c.words.length - 1]) {
     p.doneAt = Date.now(); sendClsPlayers(c, false, p);
@@ -295,6 +339,8 @@ wss.on('connection', ws => {
     if (m.t === 'join') join(ws, m);
     else if (m.t === 'leave') leaveRoom(ws, true);
     else if (m.t === 'joinclass') joinClass(ws, m);
+    else if (m.t === 'resume') { const r = verifyToken(m.token); if (r) grant(ws, r); else send(ws, { t: 'resumefail' }); }
+    else if (m.t === 'stafflogout') { admins.delete(ws); procs.delete(ws); unwatch(ws); }
     else if (m.t === 'watch' && admins.has(ws)) {
       unwatch(ws); const r = rooms.get(+m.id);
       if (!r) return send(ws, { t: 'spec', gone: true });
@@ -302,7 +348,7 @@ wss.on('connection', ws => {
       const now = Date.now(); send(ws, specMsg(r, now, r.players.map(p => stat(p, r, now))));
     }
     else if (m.t === 'unwatch') unwatch(ws);
-    else if (m.t === 'lb') send(ws, { t: 'lb', data: lbData(), classes: classSummaries() });
+    else if (m.t === 'lb') send(ws, { t: 'lb', data: lbData(), classes: classSummaries(), classTop: classTop() });
     else if (m.t === 'clsres') { const x = CS.find(c => c.id === +m.id); send(ws, { t: 'clsres', session: x || null }); }
     else if (m.t === 'delstudent' && admins.has(ws)) { const k = String(m.mssv); delete ST[k]; LB = LB.filter(e => e.mssv !== k); saveST(); saveLB(); pushAdmin(); }
     else if (m.t === 'renstudent' && admins.has(ws)) {
@@ -311,6 +357,13 @@ wss.on('connection', ws => {
     }
     else if (m.t === 'resetlb' && admins.has(ws)) { if (+m.dur) LB = LB.filter(e => e.dur !== +m.dur); else LB = []; saveLB(); pushAdmin(); }
     else if (m.t === 'dellb' && admins.has(ws)) { LB = LB.filter(e => !(e.mssv === String(m.mssv) && e.dur === +m.dur)); saveLB(); pushAdmin(); }
+    else if (m.t === 'rensession' && admins.has(ws)) {
+      const x = CS.find(c => c.id === +m.id), code = String(m.code || '').trim().toUpperCase(), err = msg => send(ws, { t: 'clserr', msg });
+      if (!x) return;
+      if (!/^[A-Z0-9_-]{2,20}$/.test(code)) return err('Mã lớp gồm 2–20 ký tự: chữ, số, dấu - hoặc _.');
+      if ((AC && AC.code === code) || CS.some(c => c !== x && c.code === code)) return err('Mã lớp "' + code + '" đã tồn tại. Mỗi mã lớp phải duy nhất.');
+      x.code = code; save('sessions'); pushAdmin();
+    }
     else if (m.t === 'delsession' && admins.has(ws)) { CS = CS.filter(x => x.id !== +m.id); save('sessions'); pushAdmin(); }
     else if (m.t === 'resetsessions' && admins.has(ws)) { CS = []; save('sessions'); pushAdmin(); }
     else if (m.t === 'clscreate' && isStaff(ws)) clsCreate(ws, m);
@@ -334,13 +387,14 @@ wss.on('connection', ws => {
       const v = String(m.text || '').normalize('NFC').replace(/\s+/g, ' ').replace(/^ /, '').slice(0, r.text.length + 40);
       if (v.length - p.typed.length > 12) return send(ws, { t: 'resync', text: p.typed }); // chặn dán văn bản
       p.typed = v;
+      if (checkCheat(p, m, Date.now())) { send(ws, { t: 'cheat', reason: p.cheat }); broadcast(r); if (r.players.every(x => x.doneAt)) finish(r); return; }
       const tw = v.split(' '); // hoàn thành khi từ cuối cùng được gõ đúng hoàn toàn
       if (tw.length === r.words.length && tw[tw.length - 1] === r.words[r.words.length - 1]) p.doneAt = Date.now();
       broadcast(r); if (r.players.every(x => x.doneAt)) finish(r);
     } else if (m.t === 'admin') {
       if ((ws.afails || 0) >= 10) return send(ws, { t: 'adminfail' });
-      if (m.pass === ADMIN_PASS) { procs.delete(ws); admins.add(ws); pushAdmin(); if (AC) sendClsAdmin(AC); }
-      else if (PROCTOR_PASS && m.pass === PROCTOR_PASS) { admins.delete(ws); unwatch(ws); procs.add(ws); pushAdmin(); if (AC) sendClsAdmin(AC); }
+      if (m.pass === ADMIN_PASS) { grant(ws, 1); send(ws, { t: 'stafftoken', token: makeToken(1), role: 1 }); }
+      else if (PROCTOR_PASS && m.pass === PROCTOR_PASS) { grant(ws, 2); send(ws, { t: 'stafftoken', token: makeToken(2), role: 2 }); }
       else { ws.afails = (ws.afails || 0) + 1; send(ws, { t: 'adminfail' }); }
     } else if (m.t === 'setcfg' && admins.has(ws)) {
       const d = Math.round(+m.duration), tx = (m.texts || []).filter(t => t && t.text).map(t => ({ title: String(t.title || '').slice(0, 80), text: String(t.text).replace(/\s+/g, ' ').trim() }));

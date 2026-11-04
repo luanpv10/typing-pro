@@ -60,3 +60,5 @@ Máy chủ là nơi quyết định, trình duyệt gửi kèm số liệu bàn 
 ## Thống kê trên bảng xếp hạng
 Đầu bảng xếp hạng hiển thị: **tổng số sinh viên tham gia**, **tổng số lớp** đã thi, và **người thi nhiều nhất** kèm số lần thi. Mỗi lượt thi (đối kháng, thi một mình, thi theo lớp) đều được đếm, kể cả khi không đạt điểm cao hơn, bỏ giữa chừng hay kết thúc sớm; lượt chưa bắt đầu (đang chờ/đếm ngược rồi hủy) thì không tính. Nếu nhiều người cùng số lần cao nhất, hiển thị tối đa 5 người.
 Thi một mình: mặc định 2 phút. Thi đối kháng và thi theo lớp: mặc định 5 phút; cấu hình cũ lưu trước bản này được đặt lại về 5 phút một lần khi khởi động.
+
+Bảng xếp hạng có thêm tab **“🏅 Thi nhiều nhất”** (đứng đầu, cạnh “1 phút”): top 30 sinh viên theo số lượt thi, đồng hạng thì cùng thứ hạng.

@@ -265,6 +265,10 @@ function backfillPlays() { // dữ liệu cũ chưa có số lần thi: ước l
   }
   if (changed) save('students');
 }
+function mostPlays() { // top 30 sinh viên có nhiều lượt thi nhất
+  return Object.entries(ST).filter(([, v]) => (v.plays || 0) > 0).map(([k, v]) => ({ mssv: k, name: v.name, plays: v.plays }))
+    .sort((a, b) => b.plays - a.plays || a.name.localeCompare(b.name, 'vi')).slice(0, 30);
+}
 function lbStats() {
   const part = new Set();
   Object.entries(ST).forEach(([k, v]) => { if ((v.plays || 0) > 0) part.add(k); });
@@ -407,7 +411,7 @@ wss.on('connection', ws => {
       const now = Date.now(); send(ws, specMsg(r, now, r.players.map(p => stat(p, r, now))));
     }
     else if (m.t === 'unwatch') unwatch(ws);
-    else if (m.t === 'lb') send(ws, { t: 'lb', data: lbData(), classes: classSummaries(), classTop: classTop(), stats: lbStats() });
+    else if (m.t === 'lb') send(ws, { t: 'lb', data: lbData(), classes: classSummaries(), classTop: classTop(), stats: lbStats(), mostPlays: mostPlays() });
     else if (m.t === 'clsres') { const x = CS.find(c => c.id === +m.id); send(ws, { t: 'clsres', session: x || null }); }
     else if (m.t === 'delstudent' && admins.has(ws)) { const k = String(m.mssv); delete ST[k]; LB = LB.filter(e => e.mssv !== k); saveST(); saveLB(); pushAdmin(); }
     else if (m.t === 'renstudent' && admins.has(ws)) {

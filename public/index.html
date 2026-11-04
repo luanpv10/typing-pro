@@ -79,7 +79,7 @@ function on(m){
   else if(m.t==='clsres'){CR=m.session;if(view==='lb')render()}
   else if(m.t==='clsclosed'){err=m.reason==='timeout'?'Lớp thi đã bị hủy vì quá 10 phút chưa bắt đầu.':'Giám thị đã hủy lớp thi.';reset()}
   else if(m.t==='joinerr'){err=m.msg;render()}
-  else if(m.t==='lb'){LBD=m.data;LBD.classes=m.classes;LBD.classTop=m.classTop;LBD.stats=m.stats;if(view==='lb')render()}
+  else if(m.t==='lb'){LBD=m.data;LBD.classes=m.classes;LBD.classTop=m.classTop;LBD.stats=m.stats;LBD.mostPlays=m.mostPlays;if(view==='lb')render()}
   else if(m.t==='resync'){if(ta)ta.value=m.text}
   else if(m.t==='aborted'){err='Đối thủ đã thoát trước khi bắt đầu.';reset()}
   else if(m.t==='adminfail'){wantAdmin=false;alert('Sai mật khẩu giám thị')}
@@ -270,7 +270,7 @@ function lbStatsHTML(){
   const m=s.most,who=m.plays?m.people.map(p=>esc(p.name)+' <span class="mu">('+esc(p.mssv)+')</span>').join(', ')+(m.more?' và '+m.more+' người khác':''):'Chưa có';
   return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:12px 0"><div class="p"><div class="mu">👥 Tổng số sinh viên tham gia</div><b style="font-size:28px">${s.students}</b></div><div class="p"><div class="mu">🏫 Tổng số lớp</div><b style="font-size:28px">${s.classes}</b></div><div class="p"><div class="mu">🏅 Thi nhiều nhất</div><div style="font-weight:700">${who}</div>${m.plays?`<div><b style="font-size:28px">${m.plays}</b> <span class="mu">lần thi</span></div>`:''}</div></div>`;
 }
-function lbTabs(){return `<div class="tabs">${[1,2,3,4,5].map(d=>`<button class="${d===lbDur?'':'g'}" onclick="setLB(${d})">${d} phút</button>`).join('')}<button class="${lbDur==='cls'?'':'g'}" onclick="setLB('cls')">👥 Theo lớp</button></div>`}
+function lbTabs(){return `<div class="tabs"><button class="${lbDur==='plays'?'':'g'}" onclick="setLB('plays')">🏅 Thi nhiều nhất</button>${[1,2,3,4,5].map(d=>`<button class="${d===lbDur?'':'g'}" onclick="setLB(${d})">${d} phút</button>`).join('')}<button class="${lbDur==='cls'?'':'g'}" onclick="setLB('cls')">👥 Theo lớp</button></div>`}
 function pickCls(v){clsSel=v;CR=null;if(v)tx({t:'clsres',id:+v});render()}
 function clsTop(){
   const T=(LBD&&LBD.classTop)||[],L=(LBD&&LBD.classes)||[],medal=['🥇','🥈','🥉'];
@@ -298,7 +298,14 @@ function clsCsv(){
   const u=URL.createObjectURL(new Blob(['\ufeff'+L.join('\n')],{type:'text/csv'})),l=document.createElement('a');
   l.href=u;l.download='lop-'+CR.code+'.csv';l.click();URL.revokeObjectURL(u);
 }
-function lbView(a){if(lbDur==='cls')return clsLb(a);
+function playsLb(a){
+  const L=LBD?(LBD.mostPlays||[]):null,medal=['🥇','🥈','🥉'],me=mssv||'',rk=[];
+  (L||[]).forEach((e,i)=>rk.push(i>0&&e.plays===L[i-1].plays?rk[i-1]:i+1));
+  a.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🏆 Bảng xếp hạng</h2><button class="g" onclick="tx({t:'lb'})">↻ Làm mới</button></div>${lbStatsHTML()}${lbTabs()}
+  <p class="mu">Top 30 sinh viên thi nhiều nhất. Tính mọi lượt thi (đối kháng, thi một mình, thi theo lớp), kể cả khi không đạt điểm cao hơn.</p>
+  ${L===null?'<p class="mu">Đang tải…</p>':L.length?`<div style="overflow-x:auto"><table><tr><th>Hạng</th><th style="text-align:left">Thí sinh</th><th>MSSV</th><th>Số lần thi</th></tr>${L.map((e,i)=>`<tr class="${e.mssv===me?'me-row':''}"><td>${medal[rk[i]-1]||rk[i]}</td><td style="text-align:left">${esc(e.name)}</td><td>${esc(e.mssv)}</td><td><b>${e.plays}</b></td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có dữ liệu.</p>'}</div>`;
+}
+function lbView(a){if(lbDur==='cls')return clsLb(a);if(lbDur==='plays')return playsLb(a);
   const L=LBD?LBD[lbDur]||[]:null,medal=['🥇','🥈','🥉'],mine=mssv||'';
   a.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🏆 Bảng xếp hạng</h2><button class="g" onclick="tx({t:'lb'})">↻ Làm mới</button></div>
   <p class="mu">Điểm cao nhất của mỗi thí sinh (tính cả thi đối kháng và thi một mình), xếp riêng theo từng loại thời gian thi.</p>

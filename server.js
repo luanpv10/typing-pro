@@ -39,12 +39,12 @@ async function flush() {
 async function loadAll() {
   try {
     const [c, st, l, h, cs] = await Promise.all([kvGet('config'), kvGet('students'), kvGet('lb'), kvGet('history'), kvGet('sessions')]);
-    if (c && c.texts) cfg = c; if (st) ST = st; if (l) LB = l; if (h) history = h; if (Array.isArray(cs)) CS = cs;
+    if (c && c.texts) cfg = Object.assign({ mode: 'preset', cpm: 400 }, c); if (st) ST = st; if (l) LB = l; if (h) history = h; if (Array.isArray(cs)) CS = cs;
     console.log(DB ? 'Lưu trữ: Upstash Redis (vĩnh viễn). Sinh viên: ' + Object.keys(ST).length : 'CẢNH BÁO: chưa cấu hình Upstash – dữ liệu lưu file tạm, sẽ mất khi Render khởi động lại.');
   } catch (e) { console.error('Không đọc được dữ liệu, dừng để tránh ghi đè:', e.message); process.exit(1); }
 }
 process.on('SIGTERM', async () => { await flush(); process.exit(0); });
-let cfg = { duration: 2, texts: [
+let cfg = { duration: 2, mode: 'preset', cpm: 400, texts: [
  { title: 'Hà Nội mùa thu', text: 'Hà Nội vào thu, những cơn gió se lạnh len qua từng con phố nhỏ. Hương hoa sữa thoang thoảng trong không khí khiến lòng người chợt dịu lại. Trên hè phố, người ta ngồi bên tách cà phê nóng, lặng lẽ ngắm lá vàng rơi. Mùa thu ở đây không ồn ào mà sâu lắng, như một bản nhạc cũ nhẹ nhàng ngân vang trong ký ức của mỗi người con đất Việt.' },
  { title: 'Giá trị của việc học', text: 'Học tập không chỉ là việc ghi nhớ kiến thức mà còn là quá trình rèn luyện tư duy và nhân cách. Mỗi sinh viên cần biết đặt câu hỏi, dám thử nghiệm và không sợ thất bại. Thành công không đến từ may mắn, mà đến từ sự kiên trì mỗi ngày. Khi chúng ta chịu khó luyện tập, những điều tưởng chừng khó khăn sẽ dần trở nên quen thuộc và đơn giản hơn rất nhiều.' },
  { title: 'Công nghệ và cuộc sống', text: 'Công nghệ thông tin đã thay đổi hoàn toàn cách con người làm việc, học tập và giao tiếp. Chỉ với một chiếc máy tính kết nối mạng, chúng ta có thể tiếp cận kho tri thức khổng lồ của nhân loại. Tuy nhiên, việc sử dụng công nghệ một cách thông minh và có trách nhiệm mới là điều quan trọng nhất. Kỹ năng gõ phím nhanh và chính xác là nền tảng giúp mọi người làm việc hiệu quả hơn.' }
@@ -91,6 +91,25 @@ const onlineCount = () => { let n = 0; wss.clients.forEach(c => { if (c.readySta
 function pushOnline() { // gom thông báo, tối đa 1 lần / 1,5 giây
   if (onlineT) return;
   onlineT = setTimeout(() => { onlineT = null; const n = onlineCount(); wss.clients.forEach(c => send(c, { t: 'online', n })); }, 1500);
+}
+// ===== Tạo đề thi theo thời gian =====
+// Có 2 loại đề: 'preset' (chọn sẵn: ghép ngẫu nhiên các đoạn trong ngân hàng đề mẫu của giám thị 1)
+// và 'random' (ngẫu nhiên: hệ thống tự ghép các câu từ kho câu có sẵn). Độ dài đề = số phút × cpm (ký tự/phút).
+const SYS_SENTENCES = ["Buổi sáng, mặt trời lên cao và những tia nắng đầu tiên chiếu qua khung cửa sổ.", "Chăm chỉ luyện tập mỗi ngày là cách tốt nhất để gõ phím nhanh và chính xác hơn.", "Sông Hồng chảy qua thủ đô, mang theo phù sa bồi đắp cho những cánh đồng xanh mướt.", "Một cuốn sách hay có thể thay đổi cách chúng ta nhìn nhận về cuộc sống.", "Mưa rơi tí tách trên mái nhà, gợi nhớ những buổi chiều yên bình ở quê nhà.", "Công nghệ thông tin phát triển nhanh chóng, đòi hỏi mỗi người phải không ngừng học hỏi.", "Khi làm việc nhóm, mỗi thành viên cần biết lắng nghe và tôn trọng ý kiến của nhau.", "Phở bò nóng hổi với hành lá thơm lừng là món ăn sáng quen thuộc của người Hà Nội.", "Thành công không phải là đích đến mà là hành trình học hỏi và trưởng thành.", "Những chú chim sẻ nhảy nhót trên cành cây, hót vang một khúc nhạc vui tươi.", "Bạn đã bao giờ ngắm hoàng hôn trên biển và cảm thấy mọi lo toan bỗng nhẹ đi chưa?", "Kỹ năng quản lý thời gian giúp sinh viên cân bằng giữa việc học và cuộc sống.", "Đà Nẵng nổi tiếng với những bãi biển dài, cát trắng và nước biển trong xanh.", "Để viết mã tốt, lập trình viên cần suy nghĩ cẩn thận trước khi bắt tay vào gõ phím.", "Mùa xuân đến, hoa đào nở rộ khắp miền Bắc, hoa mai vàng rực rỡ khắp miền Nam.", "Tinh thần kỷ luật và sự kiên trì sẽ giúp bạn vượt qua mọi thử thách trong học tập.", "Chiếc xe đạp cũ của ông nội vẫn lăn bánh êm ái trên con đường làng quen thuộc.", "Internet giúp con người kết nối với nhau dù cách xa hàng nghìn cây số.", "Mỗi buổi tối, cả gia đình quây quần bên mâm cơm, kể cho nhau nghe chuyện trong ngày.", "Hãy đặt mục tiêu rõ ràng, chia nhỏ công việc và hoàn thành từng bước một.", "Cà phê sữa đá là thức uống được nhiều người yêu thích vào những ngày nắng nóng.", "Việc đọc sách mỗi ngày giúp mở rộng vốn từ và rèn luyện khả năng tư duy logic.", "Đồng bằng sông Cửu Long có hệ thống kênh rạch chằng chịt và những vườn trái cây trĩu quả.", "Một lời cảm ơn chân thành có thể làm cho người khác vui suốt cả ngày dài.", "Trước khi thi, hãy ngủ đủ giấc, ăn uống lành mạnh và giữ cho tinh thần thật thoải mái.", "Bầu trời đêm đầy sao khiến những người yêu thiên văn mê mẩn ngắm nhìn hàng giờ liền.", "Học ngoại ngữ không chỉ giúp ta giao tiếp mà còn mở ra nhiều cơ hội nghề nghiệp mới.", "Tiếng gió thổi qua rặng tre xào xạc, nghe như lời thì thầm của làng quê Việt Nam.", "Người giỏi không phải là người không bao giờ mắc lỗi mà là người biết rút kinh nghiệm.", "Trong lớp học, thầy cô luôn khuyến khích học sinh đặt câu hỏi và mạnh dạn trình bày ý kiến.", "Bánh chưng xanh, dưa hành và câu đối đỏ là những nét đẹp không thể thiếu ngày Tết.", "Máy tính xách tay nhỏ gọn giúp sinh viên học tập và làm việc ở bất cứ đâu.", "Sức khỏe là tài sản quý giá nhất, vì vậy hãy dành thời gian vận động mỗi ngày.", "Ánh đèn thành phố lung linh về đêm, phản chiếu trên mặt hồ yên ả.", "Muốn tiến bộ, chúng ta cần dũng cảm bước ra khỏi vùng an toàn của chính mình.", "Cô giáo mỉm cười, nhẹ nhàng giải thích lại bài toán cho cả lớp cùng hiểu.", "Vịnh Hạ Long với hàng nghìn đảo đá vôi là di sản thiên nhiên được cả thế giới biết đến.", "Thói quen tốt được hình thành từ những hành động nhỏ lặp đi lặp lại mỗi ngày.", "Trên sân trường, các bạn nhỏ chạy nhảy và cười đùa trong giờ ra chơi.", "An toàn thông tin là vấn đề quan trọng mà mọi người dùng mạng cần quan tâm.", "Một mùa gặt bội thu là niềm vui lớn của người nông dân sau những tháng ngày vất vả.", "Hãy kiểm tra kỹ lại bài làm trước khi nộp để tránh những sai sót đáng tiếc.", "Chợ nổi trên sông buổi sớm tấp nập ghe thuyền chở đầy rau củ và trái cây.", "Sự sáng tạo bắt đầu từ việc dám nghĩ khác và dám thử những điều mới mẻ.", "Tiếng trống trường vang lên, báo hiệu một năm học mới đã bắt đầu.", "Gõ mười ngón đúng cách giúp tay không mỏi và tốc độ tăng lên rõ rệt theo thời gian.", "Cầu Rồng ở Đà Nẵng phun lửa và nước vào mỗi tối cuối tuần, thu hút rất đông du khách.", "Khi gặp khó khăn, đừng ngại nhờ bạn bè và thầy cô giúp đỡ vì ai cũng từng như vậy.", "Hương cốm mới thoang thoảng trong gió thu làm lòng người xao xuyến.", "Dữ liệu là nguồn tài nguyên quý giá, cần được bảo vệ và sử dụng có trách nhiệm.", "Những con đường rợp bóng cây xanh làm cho thành phố trở nên mát mẻ và dễ chịu hơn.", "Thời gian trôi qua rất nhanh, vì vậy hãy trân trọng từng giây phút bên người thân.", "Mỗi dự án thành công đều bắt đầu từ một kế hoạch rõ ràng và một đội ngũ đoàn kết.", "Nghe nhạc nhẹ khi làm việc giúp tinh thần thư giãn và tập trung hơn.", "Ngôi chùa cổ nằm yên bình giữa rừng thông, chuông ngân vang trong sương sớm.", "Biết ơn những điều giản dị xung quanh sẽ giúp chúng ta sống hạnh phúc hơn.", "Muốn có một bài thuyết trình hay, bạn cần chuẩn bị nội dung và luyện nói nhiều lần.", "Cơn gió mát từ biển thổi vào đất liền, mang theo vị mặn của muối và hương của nắng.", "Ai cũng có điểm mạnh riêng, quan trọng là ta biết phát huy nó đúng lúc, đúng chỗ.", "Bữa cơm gia đình giản dị nhưng ấm áp luôn là ký ức đẹp nhất của mỗi người con xa quê.", "Phần mềm tốt phải dễ dùng, chạy ổn định và đáp ứng đúng nhu cầu của người sử dụng.", "Chúng ta học không chỉ để có điểm số mà còn để hiểu biết và trở thành người có ích.", "Con đường đến thành công luôn có những khúc quanh, nhưng người kiên trì sẽ về đích.", "Cuối tuần, cả nhóm cùng nhau đi dã ngoại, hát hò và chơi trò chơi dưới tán cây xanh."];
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const splitSent = t => prep(t).split(/(?<=[.!?…])\s+/).filter(Boolean);
+function buildExam(dur, mode) {
+  const target = dur * (cfg.cpm || 400);
+  const units = (mode === 'random' || !cfg.texts.length) ? SYS_SENTENCES.map(x => [x]) : cfg.texts.map(t => splitSent(t.text));
+  const idx = () => shuffle(units.map((_, i) => i));
+  let order = idx(), k = 0, len = 0, guard = 0; const out = [];
+  while (len < target && guard++ < 5000) {
+    if (k >= order.length) { const last = order[order.length - 1]; order = idx(); if (order.length > 1 && order[0] === last) order.push(order.shift()); k = 0; }
+    const u = units[order[k++]], need = target - len, full = u.join(' ');
+    if (u.length === 1 || full.length <= need * 1.3) { out.push(full); len += full.length + 1; }
+    else { const part = []; let l = 0; for (const sn of u) { part.push(sn); l += sn.length + 1; if (l >= need) break; } out.push(part.join(' ')); len += l; }
+  }
+  return prep(out.join(' '));
 }
 const send = (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 
@@ -211,16 +230,16 @@ function join(ws, m) {
   const code = String(m.code || 'auto').replace(/[^\w-]/g, '').slice(0, 20) || 'auto';
   const p = { ws, name, mssv, typed: '' };
   if (m.solo) {
-    const t = cfg.texts[Math.floor(Math.random() * cfg.texts.length)];
-    const r = { id: ++seq, solo: true, text: prep(t.text), words: prep(t.text).split(' '), dur: cfg.duration, players: [p], status: 'waiting' };
+    const ex = buildExam(cfg.duration, cfg.mode);
+    const r = { id: ++seq, solo: true, text: ex, words: ex.split(' '), dur: cfg.duration, players: [p], status: 'waiting' };
     rooms.set(r.id, r); ws.room = r; return start(r);
   }
   let r = waiting.get(code);
   if (r && r.players[0].ws.readyState === 1) {
     waiting.delete(code); r.players.push(p); ws.room = r; start(r);
   } else {
-    const t = cfg.texts[Math.floor(Math.random() * cfg.texts.length)];
-    r = { id: ++seq, code, solo: false, text: prep(t.text), words: prep(t.text).split(' '), dur: cfg.duration, players: [p], status: 'waiting' };
+    const ex = buildExam(cfg.duration, cfg.mode);
+    r = { id: ++seq, code, solo: false, text: ex, words: ex.split(' '), dur: cfg.duration, players: [p], status: 'waiting' };
     rooms.set(r.id, r); waiting.set(code, r); ws.room = r;
     send(ws, { t: 'state', status: 'waiting', code, me: 0, players: [{ name }], text: '' }); pushAdmin();
   }
@@ -268,8 +287,8 @@ function clsCreate(ws, m) {
   if (CS.some(x => x.code === code)) return err('Mã lớp "' + code + '" đã được dùng cho một buổi thi trước đó. Mỗi mã lớp chỉ dùng một lần, hãy đặt mã khác (hoặc nhờ giám thị 1 xóa thống kê buổi thi cũ).');
   if (pw.length < 3) return err('Mật khẩu lớp tối thiểu 3 ký tự.');
   const dur = CLASS_DUR, max = Math.min(100, Math.max(2, Math.round(+m.max) || 60));
-  const ti = procs.has(ws) ? -1 : Math.round(+m.textIdx), t = cfg.texts[ti >= 0 && ti < cfg.texts.length ? ti : Math.floor(Math.random() * cfg.texts.length)];
-  AC = { code, password: pw, dur, max, status: 'open', players: [], text: prep(t.text), words: prep(t.text).split(' '), startAt: 0, endAt: 0 };
+  const mode = admins.has(ws) && (m.mode === 'preset' || m.mode === 'random') ? m.mode : cfg.mode, ex = buildExam(dur, mode); // giám thị 2 luôn theo cấu hình chung
+  AC = { code, password: pw, dur, max, status: 'open', players: [], text: ex, words: ex.split(' '), startAt: 0, endAt: 0 };
   const c = AC;
   c.tick = setInterval(() => { if (c.status !== 'finished' && c.status !== 'cancelled') { sendClsPlayers(c, false); sendClsAdmin(c); } }, 1000);
   sendClsAdmin(c); pushAdmin();
@@ -386,7 +405,7 @@ wss.on('connection', ws => {
     else if (m.t === 'restore' && admins.has(ws)) {
       const d = m.data;
       if (d && d.students && typeof d.students === 'object' && Array.isArray(d.lb) && Array.isArray(d.history)) {
-        ST = d.students; LB = d.lb; history = d.history; if (Array.isArray(d.sessions)) CS = d.sessions; if (d.config && Array.isArray(d.config.texts) && d.config.texts.length) cfg = d.config;
+        ST = d.students; LB = d.lb; history = d.history; if (Array.isArray(d.sessions)) CS = d.sessions; if (d.config && Array.isArray(d.config.texts)) cfg = Object.assign({ mode: 'preset', cpm: 400 }, d.config);
         save('config', 'students', 'lb', 'history', 'sessions'); pushAdmin();
       }
     }
@@ -407,8 +426,9 @@ wss.on('connection', ws => {
       else if (PROCTOR_PASS && m.pass === PROCTOR_PASS) { grant(ws, 2); send(ws, { t: 'stafftoken', token: makeToken(2), role: 2 }); }
       else { ws.afails = (ws.afails || 0) + 1; send(ws, { t: 'adminfail' }); }
     } else if (m.t === 'setcfg' && admins.has(ws)) {
-      const d = Math.round(+m.duration), tx = (m.texts || []).filter(t => t && t.text).map(t => ({ title: String(t.title || '').slice(0, 80), text: String(t.text).replace(/\s+/g, ' ').trim() }));
-      if (d >= 1 && d <= 5 && tx.length) { cfg = { duration: d, texts: tx }; save('config'); }
+      const d = Math.round(+m.duration), tx = (m.texts || []).filter(t => t && t.text).map(t => ({ title: String(t.title || '').slice(0, 80), text: String(t.text).replace(/\s+/g, ' ').trim().slice(0, 6000) }));
+      const mode = m.mode === 'random' ? 'random' : 'preset', cpm = Math.min(800, Math.max(200, Math.round(+m.cpm) || 400));
+      if (d >= 1 && d <= 5 && (tx.length || mode === 'random')) { cfg = { duration: d, mode, cpm, texts: tx.slice(0, 300) }; save('config'); }
       pushAdmin();
     }
   });

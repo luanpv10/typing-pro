@@ -45,3 +45,9 @@ Máy chủ là nơi quyết định, trình duyệt gửi kèm số liệu bàn 
 ## Ghi chú giao diện
 - Phía trên cùng giữa trang luôn hiển thị số người đang online (số kết nối đang mở, cập nhật khoảng 1,5 giây).
 - Thi một mình: nút “⏹ Kết thúc” ở góc phải. Kết thúc sớm sẽ hiện kết quả nhưng **không ghi vào bảng xếp hạng**; thi hết giờ hoặc gõ xong đoạn văn mới được ghi. Sau khi kết thúc, nút đó đổi thành “← Về trang chủ”.
+
+## Cấu hình đề thi (giám thị 1)
+- **Ngân hàng đề mẫu:** nhập nhiều đoạn văn (thêm từng đoạn, hoặc dán nhiều đoạn cách nhau bằng dòng trống).
+- **Hai loại đề thi:** *Chọn sẵn* — mỗi lượt thi hệ thống bốc ngẫu nhiên các đoạn trong ngân hàng và ghép cho đủ độ dài theo số phút; *Ngẫu nhiên* — hệ thống tự ghép nhiều câu từ kho câu có sẵn (64 câu).
+- **Độ dài đề** = số phút × “ký tự mỗi phút” (mặc định 400 ≈ 80 WPM, chỉnh 200–800). Nếu ngân hàng ngắn hơn độ dài cần, các đoạn sẽ lặp lại (giao diện có cảnh báo).
+- Loại đề mặc định áp dụng cho đối kháng, thi một mình và thi theo lớp; giám thị 1 có thể chọn loại đề riêng khi tạo lớp. Giám thị 2 luôn dùng cấu hình chung.

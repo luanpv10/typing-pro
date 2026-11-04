@@ -79,7 +79,7 @@ function on(m){
   else if(m.t==='clsres'){CR=m.session;if(view==='lb')render()}
   else if(m.t==='clsclosed'){err=m.reason==='timeout'?'Lớp thi đã bị hủy vì quá 10 phút chưa bắt đầu.':'Giám thị đã hủy lớp thi.';reset()}
   else if(m.t==='joinerr'){err=m.msg;render()}
-  else if(m.t==='lb'){LBD=m.data;LBD.classes=m.classes;LBD.classTop=m.classTop;if(view==='lb')render()}
+  else if(m.t==='lb'){LBD=m.data;LBD.classes=m.classes;LBD.classTop=m.classTop;LBD.stats=m.stats;if(view==='lb')render()}
   else if(m.t==='resync'){if(ta)ta.value=m.text}
   else if(m.t==='aborted'){err='Đối thủ đã thoát trước khi bắt đầu.';reset()}
   else if(m.t==='adminfail'){wantAdmin=false;alert('Sai mật khẩu giám thị')}
@@ -100,7 +100,7 @@ function join(solo){
   LS.set('tp_name',name);LS.set('tp_mssv',mssv);
   if(name.length<2){err='Vui lòng nhập họ tên.';return render()}
   if(!/^[A-Z0-9]{5,15}$/.test(mssv)){err='MSSV không hợp lệ (5–15 ký tự chữ hoặc số, ví dụ TH12345).';return render()}
-  err='';const sdv=solo?(+$('#sd').value||5):0;if(solo)LS.set('tp_sdur',String(sdv));tx({t:'join',name,mssv,code:solo?'':$('#cd').value,solo,dur:sdv})
+  err='';const sdv=solo?(+$('#sd').value||2):0;if(solo)LS.set('tp_sdur2',String(sdv));tx({t:'join',name,mssv,code:solo?'':$('#cd').value,solo,dur:sdv})
 }
 function joinClass(){
   name=($('#nm').value||'').replace(/\s+/g,' ').trim();mssv=($('#ms').value||'').trim().toUpperCase();clsCode=($('#cc').value||'').trim().toUpperCase();
@@ -133,11 +133,11 @@ function render(){
   const a=$('#app');fitTxt();
   setNav();
   if(view==='home')a.innerHTML=`<div class="card"><h2 style="margin-top:0">Thi gõ đối kháng 1–1</h2>
-  <p class="mu">Hai người vào cùng một phòng, gõ cùng một đoạn tiếng Việt. Điểm = tốc độ (WPM) × độ chính xác². Chấm theo từng từ: chỉ từ gõ đúng hoàn toàn mới được tính tốc độ, và gõ sai một từ không ảnh hưởng các từ sau. Thi đối kháng: <b>${dur} phút</b>; thi một mình: tự chọn 1–5 phút.<br>MSSV là duy nhất, dùng để định danh bạn và lưu điểm cao nhất. Lần đầu nhập sẽ đăng ký họ tên cho MSSV đó; các lần sau phải nhập đúng họ tên.</p>
+  <p class="mu">Hai người vào cùng một phòng, gõ cùng một đoạn tiếng Việt. Điểm = tốc độ (WPM) × độ chính xác². Chấm theo từng từ: chỉ từ gõ đúng hoàn toàn mới được tính tốc độ, và gõ sai một từ không ảnh hưởng các từ sau. Thi đối kháng: <b>${dur} phút</b>; thi một mình: tự chọn 1–5 phút (mặc định 2).<br>MSSV là duy nhất, dùng để định danh bạn và lưu điểm cao nhất. Lần đầu nhập sẽ đăng ký họ tên cho MSSV đó; các lần sau phải nhập đúng họ tên.</p>
   ${err?`<p style="color:var(--bad)">${esc(err)}</p>`:''}
   <div class="row"><div class="grow"><label>Họ và tên</label><input id="nm" value="${esc(name)}" maxlength="40" placeholder="Nguyễn Văn A"></div><div class="grow"><label>MSSV (duy nhất)</label><input id="ms" value="${esc(mssv)}" maxlength="15" placeholder="TH12345" autocapitalize="characters" style="text-transform:uppercase"></div>
   <div class="grow"><label>Mã phòng (tuỳ chọn, để ghép đúng cặp)</label><input id="cd" maxlength="20" placeholder="Để trống = ghép tự động"></div></div>
-  <div class="row" style="margin-top:14px"><select id="sd" title="Thời gian thi một mình" style="width:auto">${[1,2,3,4,5].map(m=>`<option value="${m}" ${m===(+LS.get('tp_sdur')||5)?'selected':''}>⏱ ${m} phút</option>`).join('')}</select><button class="b2" onclick="join(true)">Thi một mình</button><button onclick="join(false)" style="margin-left:auto">⚔️ Thi đối kháng</button></div></div>
+  <div class="row" style="margin-top:14px"><select id="sd" title="Thời gian thi một mình" style="width:auto">${[1,2,3,4,5].map(m=>`<option value="${m}" ${m===(+LS.get('tp_sdur2')||2)?'selected':''}>⏱ ${m} phút</option>`).join('')}</select><button class="b2" onclick="join(true)">Thi một mình</button><button onclick="join(false)" style="margin-left:auto">⚔️ Thi đối kháng</button></div></div>
   <div class="card"><h3 style="margin:0 0 4px">🏫 Thi theo lớp</h3><p class="mu" style="margin-top:0">Giám thị cung cấp mã lớp và mật khẩu. Cả lớp vào phòng chờ và thi cùng lúc trên cùng một đoạn văn. (Nhập Họ tên và MSSV ở trên.)</p>
   <div class="row" style="align-items:flex-end"><div class="grow"><label>Mã lớp</label><input id="cc" value="${esc(clsCode)}" maxlength="20" placeholder="SD2101" style="text-transform:uppercase"></div><div class="grow"><label>Mật khẩu lớp</label><input id="cp" type="password" maxlength="30" autocomplete="off"></div><button onclick="joinClass()">Vào lớp thi</button></div></div>
   <div class="card mu">Giữ đúng dấu tiếng Việt, dùng Space để sang từ tiếp theo và Backspace để sửa lỗi. Từ nào gõ sai sẽ tô đỏ sau khi bạn bấm Space. Dán văn bản bị chặn.</div>`;
@@ -265,6 +265,11 @@ function celebrate(w){
 function fanfare(){try{const ac=new(window.AudioContext||window.webkitAudioContext)();[523,659,784,1047,784,1047].forEach((f,i)=>{const o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime+i*.16;o.type='triangle';o.frequency.value=f;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(.2,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.start(t);o.stop(t+.32)})}catch(e){}}
 function openLB(){lbFrom=view;view='lb';lbDur=dur;tx({t:'lb'});render()}
 function setLB(d){lbDur=d;render()}
+function lbStatsHTML(){
+  const s=LBD&&LBD.stats;if(!s)return '';
+  const m=s.most,who=m.plays?m.people.map(p=>esc(p.name)+' <span class="mu">('+esc(p.mssv)+')</span>').join(', ')+(m.more?' và '+m.more+' người khác':''):'Chưa có';
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:12px 0"><div class="p"><div class="mu">👥 Tổng số sinh viên tham gia</div><b style="font-size:28px">${s.students}</b></div><div class="p"><div class="mu">🏫 Tổng số lớp</div><b style="font-size:28px">${s.classes}</b></div><div class="p"><div class="mu">🏅 Thi nhiều nhất</div><div style="font-weight:700">${who}</div>${m.plays?`<div><b style="font-size:28px">${m.plays}</b> <span class="mu">lần thi</span></div>`:''}</div></div>`;
+}
 function lbTabs(){return `<div class="tabs">${[1,2,3,4,5].map(d=>`<button class="${d===lbDur?'':'g'}" onclick="setLB(${d})">${d} phút</button>`).join('')}<button class="${lbDur==='cls'?'':'g'}" onclick="setLB('cls')">👥 Theo lớp</button></div>`}
 function pickCls(v){clsSel=v;CR=null;if(v)tx({t:'clsres',id:+v});render()}
 function clsTop(){
@@ -277,7 +282,7 @@ function clsTop(){
 }
 function clsLb(a){
   const L=LBD&&LBD.classes;
-  a.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🏆 Bảng xếp hạng</h2><button class="g" onclick="tx({t:'lb'})">↻ Làm mới</button></div>${lbTabs()}
+  a.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🏆 Bảng xếp hạng</h2><button class="g" onclick="tx({t:'lb'})">↻ Làm mới</button></div>${lbStatsHTML()}${lbTabs()}
   ${clsTop()}${L===undefined?'<p class="mu">Đang tải…</p>':!L.length?'<p class="mu">Chưa có buổi thi theo lớp nào.</p>':`<label>Chọn buổi thi theo lớp</label><select onchange="pickCls(this.value)"><option value="">— Chọn —</option>${L.map(c=>`<option value="${c.id}" ${String(c.id)===String(clsSel)?'selected':''}>${esc(c.code)} · ${c.dur} phút · ${new Date(c.at).toLocaleString('vi-VN')} · ${c.count} sv</option>`).join('')}</select>`}
   ${clsSel&&!CR?'<p class="mu">Đang tải kết quả…</p>':''}${CR?clsDetail(CR):''}</div>`;
 }
@@ -297,7 +302,7 @@ function lbView(a){if(lbDur==='cls')return clsLb(a);
   const L=LBD?LBD[lbDur]||[]:null,medal=['🥇','🥈','🥉'],mine=mssv||'';
   a.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🏆 Bảng xếp hạng</h2><button class="g" onclick="tx({t:'lb'})">↻ Làm mới</button></div>
   <p class="mu">Điểm cao nhất của mỗi thí sinh (tính cả thi đối kháng và thi một mình), xếp riêng theo từng loại thời gian thi.</p>
-  ${lbTabs()}
+  ${lbStatsHTML()}${lbTabs()}
   ${L===null?'<p class="mu">Đang tải…</p>':L.length?`<div style="overflow-x:auto"><table><tr><th>Hạng</th><th style="text-align:left">Thí sinh</th><th>MSSV</th><th>Điểm</th><th>WPM</th><th>Chính xác</th><th>Ngày</th></tr>
   ${L.map((e,i)=>`<tr class="${e.mssv===mine?'me-row':''}"><td>${medal[i]||i+1}</td><td style="text-align:left">${esc(e.name)}</td><td>${esc(e.mssv)}</td><td><b>${e.score}</b></td><td>${e.wpm}</td><td>${e.acc}%</td><td>${new Date(e.at).toLocaleDateString('vi-VN')}</td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có kết quả nào cho loại thời gian này.</p>'}</div>`;
 }

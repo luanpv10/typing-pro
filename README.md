@@ -41,3 +41,7 @@ Máy chủ là nơi quyết định, trình duyệt gửi kèm số liệu bàn 
 - Cảnh báo mềm ⚠ (giám thị thấy, không tự hủy): rời tab/cửa sổ từ 4 lần, hoặc trình duyệt không gửi dữ liệu kiểm tra.
 - Đoạn văn không nằm dạng chữ trong DOM (extension đọc nội dung trang sẽ không lấy được); chặn dán, sao chép, kéo thả, chuột phải.
 - Lưu ý: không có cách nào ở trình duyệt chống tuyệt đối. Với kỳ thi quan trọng, nên **chặn cài extension bằng chính sách Chrome** trên máy phòng thi (ExtensionInstallBlocklist = "*") hoặc cho thi bằng cửa sổ Khách (Guest) không có extension, và dùng bộ gõ của hệ điều hành (Unikey, EVKey) thay vì extension gõ tiếng Việt.
+
+## Ghi chú giao diện
+- Phía trên cùng giữa trang luôn hiển thị số người đang online (số kết nối đang mở, cập nhật khoảng 1,5 giây).
+- Thi một mình: nút “⏹ Kết thúc” ở góc phải. Kết thúc sớm sẽ hiện kết quả nhưng **không ghi vào bảng xếp hạng**; thi hết giờ hoặc gõ xong đoạn văn mới được ghi. Sau khi kết thúc, nút đó đổi thành “← Về trang chủ”.

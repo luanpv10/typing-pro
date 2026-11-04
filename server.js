@@ -86,6 +86,12 @@ const staffSend = msg => { admins.forEach(w => send(w, msg)); procs.forEach(w =>
 let history = [];
 let seq = 0;
 const prep = t => String(t).normalize('NFC').replace(/\s+/g, ' ').trim();
+let onlineT = null;
+const onlineCount = () => { let n = 0; wss.clients.forEach(c => { if (c.readyState === 1) n++; }); return n; };
+function pushOnline() { // gom thông báo, tối đa 1 lần / 1,5 giây
+  if (onlineT) return;
+  onlineT = setTimeout(() => { onlineT = null; const n = onlineCount(); wss.clients.forEach(c => send(c, { t: 'online', n })); }, 1500);
+}
 const send = (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 
 // Chấm điểm theo từ (giống Monkeytype / 10FastFingers): từ gõ sai chỉ mất điểm của chính từ đó,
@@ -165,8 +171,8 @@ function finish(r) {
     if (r.players[0].left && !r.players[1].left) w = 1;
     if (r.players[1].left && !r.players[0].left) w = 0;
   }
-  r.result = { winner: w };
-  s.forEach((x, i) => { if (!r.players[i].left) recordLB(x, r.dur); }); saveLB(); // cả thi đối kháng và thi một mình; bỏ cuộc giữa chừng thì không tính
+  r.result = { winner: w, early: !!(r.solo && r.players[0] && r.players[0].early) };
+  s.forEach((x, i) => { if (!r.players[i].left && !r.players[i].early) recordLB(x, r.dur); }); saveLB(); // cả thi đối kháng và thi một mình; bỏ cuộc giữa chừng thì không tính
   if (!r.solo) { history.push({ at: Date.now(), players: s, winner: w }); if (history.length > 3000) history.shift(); save('history'); }
   r.players.forEach(p => releaseId(p.ws));
   broadcast(r); rooms.delete(r.id); pushAdmin();
@@ -230,7 +236,7 @@ function classTop() {
     if (r.left || r.cheat || !r.score) return; const b = best.get(r.mssv);
     if (!b || r.score > b.score || (r.score === b.score && r.acc > b.acc)) best.set(r.mssv, { mssv: r.mssv, name: r.name, code: x.code, score: r.score, wpm: r.wpm, acc: r.acc });
   }));
-  return [...best.values()].sort((a, b) => b.score - a.score || b.acc - a.acc).slice(0, 20);
+  return [...best.values()].sort((a, b) => b.score - a.score || b.acc - a.acc).slice(0, 30);
 }
 const classSummaries = () => CS.slice().reverse().slice(0, 100).map(({ results, ...r }) => r);
 function grant(ws, role) {
@@ -333,11 +339,15 @@ function clsTyped(ws, m) {
 }
 
 wss.on('connection', ws => {
-  send(ws, { t: 'hello', duration: cfg.duration });
+  send(ws, { t: 'hello', duration: cfg.duration, online: onlineCount() }); pushOnline();
   ws.on('message', raw => {
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
     if (m.t === 'join') join(ws, m);
     else if (m.t === 'leave') leaveRoom(ws, true);
+    else if (m.t === 'endsolo') { // thi một mình: kết thúc sớm (hiện kết quả, không ghi vào bảng xếp hạng)
+      const r = ws.room;
+      if (r && r.solo && r.status === 'running') { const p = r.players[0]; if (!p.doneAt) { p.early = true; p.doneAt = Date.now(); } finish(r); }
+    }
     else if (m.t === 'joinclass') joinClass(ws, m);
     else if (m.t === 'resume') { const r = verifyToken(m.token); if (r) grant(ws, r); else send(ws, { t: 'resumefail' }); }
     else if (m.t === 'stafflogout') { admins.delete(ws); procs.delete(ws); unwatch(ws); }
@@ -402,6 +412,6 @@ wss.on('connection', ws => {
       pushAdmin();
     }
   });
-  ws.on('close', () => { unwatch(ws); admins.delete(ws); procs.delete(ws); leaveRoom(ws); });
+  ws.on('close', () => { pushOnline(); unwatch(ws); admins.delete(ws); procs.delete(ws); leaveRoom(ws); });
 });
 loadAll().then(() => server.listen(PORT, () => console.log('Typing Pro chạy tại http://localhost:' + PORT)));

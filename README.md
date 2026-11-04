@@ -26,7 +26,7 @@ Trang chủ → “🛠 Giám thị” → nhập mật khẩu; mật khẩu nà
 ## Chức năng của giám thị 1
 - Chỉnh thời gian 1–5 phút, soạn đoạn văn.
 - Theo dõi trực tiếp một phòng thi, tung hô người thắng.
-- **Thi theo lớp**: tạo lớp (mã lớp, mật khẩu, sĩ số tối đa; **thời gian cố định 5 phút**; **mã lớp phải duy nhất**, không dùng lại mã của buổi thi đã lưu; giám thị 1 có thể chọn đoạn văn, giám thị 2 luôn nhận đoạn ngẫu nhiên từ kho do giám thị 1 quản lý) → sinh viên nhập mã + mật khẩu ở trang chủ vào phòng chờ → bấm “Bắt đầu thi” để cả lớp thi cùng lúc, xem bảng xếp hạng trực tiếp, tung hô người đứng đầu. Mỗi lúc chỉ có 1 lớp thi. Kết quả mỗi buổi được lưu thành thống kê (xem ở Bảng xếp hạng → “👥 Theo lớp”) và điểm cũng được ghi vào bảng xếp hạng chung. Nếu server khởi động lại giữa buổi thi, lớp đang mở sẽ mất và cần tạo lại.
+- **Thi theo lớp**: tạo lớp (mã lớp, mật khẩu, sĩ số tối đa; **thời gian do giám thị 1 đặt trong cấu hình (mặc định 5 phút)**; **lớp tự hủy nếu quá 10 phút chưa bắt đầu thi**; **mã lớp phải duy nhất**, không dùng lại mã của buổi thi đã lưu; giám thị 1 có thể chọn đoạn văn, giám thị 2 luôn nhận đoạn ngẫu nhiên từ kho do giám thị 1 quản lý) → sinh viên nhập mã + mật khẩu ở trang chủ vào phòng chờ → bấm “Bắt đầu thi” để cả lớp thi cùng lúc, xem bảng xếp hạng trực tiếp, tung hô người đứng đầu. Mỗi lúc chỉ có 1 lớp thi. Kết quả mỗi buổi được lưu thành thống kê (xem ở Bảng xếp hạng → “👥 Theo lớp”) và điểm cũng được ghi vào bảng xếp hạng chung. Nếu server khởi động lại giữa buổi thi, lớp đang mở sẽ mất và cần tạo lại.
 - Quản lý dữ liệu: xóa từng dòng bảng xếp hạng, xóa theo mốc thời gian, xóa toàn bộ bảng xếp hạng, xóa lịch sử, xóa thống kê thi theo lớp, xóa từng sinh viên / sửa tên, **xóa toàn bộ dữ liệu** (gõ XOA để xác nhận).
 - Tải bản sao lưu (.json) và khôi phục từ file.
 
@@ -51,3 +51,8 @@ Máy chủ là nơi quyết định, trình duyệt gửi kèm số liệu bàn 
 - **Hai loại đề thi:** *Chọn sẵn* — mỗi lượt thi hệ thống bốc ngẫu nhiên các đoạn trong ngân hàng và ghép cho đủ độ dài theo số phút; *Ngẫu nhiên* — hệ thống tự ghép nhiều câu từ kho câu có sẵn (64 câu).
 - **Độ dài đề** = số phút × “ký tự mỗi phút” (mặc định 400 ≈ 80 WPM, chỉnh 200–800). Nếu ngân hàng ngắn hơn độ dài cần, các đoạn sẽ lặp lại (giao diện có cảnh báo).
 - Loại đề mặc định áp dụng cho đối kháng, thi một mình và thi theo lớp; giám thị 1 có thể chọn loại đề riêng khi tạo lớp. Giám thị 2 luôn dùng cấu hình chung.
+
+## Thời gian thi
+- **Thi một mình:** sinh viên tự chọn 1, 2, 3, 4 hoặc 5 phút (mặc định 5); điểm xếp hạng theo từng mốc.
+- **Thi đối kháng** và **thi theo lớp:** giám thị 1 đặt thời gian trong “Cấu hình cuộc thi” (mỗi loại một ô, mặc định 5 phút).
+- Lớp thi tự hủy nếu sau 10 phút kể từ lúc tạo mà giám thị chưa bấm “Bắt đầu thi” (có thể đổi bằng biến môi trường `CLASS_WAIT_SEC`, tính bằng giây).

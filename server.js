@@ -12,7 +12,7 @@ function verifyToken(tok) {
   try { if (crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(ok))) return role === '1' ? 1 : (role === '2' && process.env.PROCTOR_PASS ? 2 : 0); } catch (e) {}
   return 0;
 }
-const CLASS_DUR = 5; // thi theo lớp: cố định 5 phút
+const CLASS_WAIT_MS = (+process.env.CLASS_WAIT_SEC || 600) * 1000; // lớp mở quá thời gian này mà chưa bắt đầu thi thì tự hủy (mặc định 10 phút)
 const PROCTOR_PASS = process.env.PROCTOR_PASS || '';
 // ---- Lưu trữ: Upstash Redis (vĩnh viễn) nếu có biến môi trường, nếu không thì lưu file (mất khi Render khởi động lại) ----
 const UP_URL = process.env.UPSTASH_REDIS_REST_URL, UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN, DB = !!(UP_URL && UP_TOKEN);
@@ -39,12 +39,12 @@ async function flush() {
 async function loadAll() {
   try {
     const [c, st, l, h, cs] = await Promise.all([kvGet('config'), kvGet('students'), kvGet('lb'), kvGet('history'), kvGet('sessions')]);
-    if (c && c.texts) cfg = Object.assign({ mode: 'preset', cpm: 400 }, c); if (st) ST = st; if (l) LB = l; if (h) history = h; if (Array.isArray(cs)) CS = cs;
+    if (c && c.texts) cfg = Object.assign({ mode: 'preset', cpm: 400, classDur: 5 }, c); if (st) ST = st; if (l) LB = l; if (h) history = h; if (Array.isArray(cs)) CS = cs;
     console.log(DB ? 'Lưu trữ: Upstash Redis (vĩnh viễn). Sinh viên: ' + Object.keys(ST).length : 'CẢNH BÁO: chưa cấu hình Upstash – dữ liệu lưu file tạm, sẽ mất khi Render khởi động lại.');
   } catch (e) { console.error('Không đọc được dữ liệu, dừng để tránh ghi đè:', e.message); process.exit(1); }
 }
 process.on('SIGTERM', async () => { await flush(); process.exit(0); });
-let cfg = { duration: 2, mode: 'preset', cpm: 400, texts: [
+let cfg = { duration: 5, classDur: 5, mode: 'preset', cpm: 400, texts: [
  { title: 'Hà Nội mùa thu', text: 'Hà Nội vào thu, những cơn gió se lạnh len qua từng con phố nhỏ. Hương hoa sữa thoang thoảng trong không khí khiến lòng người chợt dịu lại. Trên hè phố, người ta ngồi bên tách cà phê nóng, lặng lẽ ngắm lá vàng rơi. Mùa thu ở đây không ồn ào mà sâu lắng, như một bản nhạc cũ nhẹ nhàng ngân vang trong ký ức của mỗi người con đất Việt.' },
  { title: 'Giá trị của việc học', text: 'Học tập không chỉ là việc ghi nhớ kiến thức mà còn là quá trình rèn luyện tư duy và nhân cách. Mỗi sinh viên cần biết đặt câu hỏi, dám thử nghiệm và không sợ thất bại. Thành công không đến từ may mắn, mà đến từ sự kiên trì mỗi ngày. Khi chúng ta chịu khó luyện tập, những điều tưởng chừng khó khăn sẽ dần trở nên quen thuộc và đơn giản hơn rất nhiều.' },
  { title: 'Công nghệ và cuộc sống', text: 'Công nghệ thông tin đã thay đổi hoàn toàn cách con người làm việc, học tập và giao tiếp. Chỉ với một chiếc máy tính kết nối mạng, chúng ta có thể tiếp cận kho tri thức khổng lồ của nhân loại. Tuy nhiên, việc sử dụng công nghệ một cách thông minh và có trách nhiệm mới là điều quan trọng nhất. Kỹ năng gõ phím nhanh và chính xác là nền tảng giúp mọi người làm việc hiệu quả hơn.' }
@@ -167,7 +167,7 @@ function pushAdmin() {
   const live = [...rooms.values()].map(r => ({ id: r.id, names: r.players.map(p => p.name), status: r.status }));
   const students = Object.entries(ST).map(([mssv, v]) => ({ mssv, name: v.name }));
   const clsInfo = AC ? { code: AC.code, status: AC.status, total: AC.players.length } : null;
-  procs.forEach(ws => send(ws, { t: 'admin', role: 2, cfg: { duration: CLASS_DUR }, cls: clsInfo, sessions: classSummaries() }));
+  procs.forEach(ws => send(ws, { t: 'admin', role: 2, cfg: { duration: cfg.classDur || 5 }, cls: clsInfo, sessions: classSummaries() }));
   admins.forEach(ws => send(ws, { t: 'admin', role: 1, cfg, live, students, history: history.slice(-200), lb: lbData(), persist: DB, cls: AC ? { code: AC.code, status: AC.status, total: AC.players.length } : null, sessions: classSummaries() }));
 }
 function start(r) {
@@ -230,8 +230,9 @@ function join(ws, m) {
   const code = String(m.code || 'auto').replace(/[^\w-]/g, '').slice(0, 20) || 'auto';
   const p = { ws, name, mssv, typed: '' };
   if (m.solo) {
-    const ex = buildExam(cfg.duration, cfg.mode);
-    const r = { id: ++seq, solo: true, text: ex, words: ex.split(' '), dur: cfg.duration, players: [p], status: 'waiting' };
+    const sd = Math.round(+m.dur), sdur = sd >= 1 && sd <= 5 ? sd : 5;
+    const ex = buildExam(sdur, cfg.mode);
+    const r = { id: ++seq, solo: true, text: ex, words: ex.split(' '), dur: sdur, players: [p], status: 'waiting' };
     rooms.set(r.id, r); ws.room = r; return start(r);
   }
   let r = waiting.get(code);
@@ -265,7 +266,7 @@ function grant(ws, role) {
 function sendClsAdmin(c, extra) {
   const now = Date.now(), arr = clsSnap(c, now);
   const msg = Object.assign({ t: 'clsadmin', code: c.code, password: c.password, status: c.status, dur: c.dur, max: c.max, total: c.players.length,
-    toStart: c.startAt ? c.startAt - now : 0, toEnd: c.endAt ? c.endAt - now : 0, players: arr.map(x => slim(x.s, x.p)) }, extra);
+    toStart: c.startAt ? c.startAt - now : 0, toEnd: c.endAt ? c.endAt - now : 0, toExpire: c.status === 'open' && c.expireAt ? c.expireAt - now : 0, players: arr.map(x => slim(x.s, x.p)) }, extra);
   staffSend(msg);
 }
 // Gửi trạng thái cho từng sinh viên: chỉ số liệu của riêng họ + top (không phát từng phím cho cả lớp)
@@ -286,14 +287,17 @@ function clsCreate(ws, m) {
   if (!/^[A-Z0-9_-]{2,20}$/.test(code)) return err('Mã lớp gồm 2–20 ký tự: chữ, số, dấu - hoặc _.');
   if (CS.some(x => x.code === code)) return err('Mã lớp "' + code + '" đã được dùng cho một buổi thi trước đó. Mỗi mã lớp chỉ dùng một lần, hãy đặt mã khác (hoặc nhờ giám thị 1 xóa thống kê buổi thi cũ).');
   if (pw.length < 3) return err('Mật khẩu lớp tối thiểu 3 ký tự.');
-  const dur = CLASS_DUR, max = Math.min(100, Math.max(2, Math.round(+m.max) || 60));
+  const dur = cfg.classDur || 5, max = Math.min(100, Math.max(2, Math.round(+m.max) || 60));
   const mode = admins.has(ws) && (m.mode === 'preset' || m.mode === 'random') ? m.mode : cfg.mode, ex = buildExam(dur, mode); // giám thị 2 luôn theo cấu hình chung
   AC = { code, password: pw, dur, max, status: 'open', players: [], text: ex, words: ex.split(' '), startAt: 0, endAt: 0 };
   const c = AC;
+  c.expireAt = Date.now() + CLASS_WAIT_MS;
+  c.expire = setTimeout(() => { if (AC === c && c.status === 'open') clsCancel('timeout'); }, CLASS_WAIT_MS);
   c.tick = setInterval(() => { if (c.status !== 'finished' && c.status !== 'cancelled') { sendClsPlayers(c, false); sendClsAdmin(c); } }, 1000);
   sendClsAdmin(c); pushAdmin();
 }
 function clsStart(c) {
+  clearTimeout(c.expire);
   const now = Date.now(); c.status = 'countdown'; c.startAt = now + 5000; c.endAt = c.startAt + c.dur * 60000;
   c.t1 = setTimeout(() => { if (c.status === 'countdown') { c.status = 'running'; sendClsPlayers(c, true); sendClsAdmin(c); } }, 5000);
   c.t2 = setTimeout(() => clsFinish(c), c.endAt - now + 300);
@@ -301,7 +305,7 @@ function clsStart(c) {
 }
 function clsFinish(c) {
   if (c.status === 'finished' || c.status === 'cancelled') return;
-  c.status = 'finished'; clearTimeout(c.t1); clearTimeout(c.t2); clearInterval(c.tick);
+  c.status = 'finished'; clearTimeout(c.t1); clearTimeout(c.t2); clearTimeout(c.expire); clearInterval(c.tick);
   const now = Date.now(), arr = clsSnap(c, now);
   const results = arr.map((x, i) => ({ rank: i + 1, mssv: x.s.mssv, name: x.s.name, score: x.s.score, wpm: x.s.wpm, acc: x.s.acc, correct: x.s.correct, len: x.s.len, done: x.s.done, left: !!x.p.left, cheat: x.s.cheat }));
   arr.forEach(x => { if (!x.p.left) recordLB(x.s, c.dur); }); saveLB();
@@ -313,11 +317,11 @@ function clsFinish(c) {
   c.players.forEach(p => { releaseId(p.ws); if (p.ws) p.ws.cls = null; });
   AC = null; pushAdmin();
 }
-function clsCancel() {
+function clsCancel(reason) {
   const c = AC; if (!c || (c.status !== 'open' && c.status !== 'countdown')) return;
-  c.status = 'cancelled'; clearTimeout(c.t1); clearTimeout(c.t2); clearInterval(c.tick);
-  c.players.forEach(p => { send(p.ws, { t: 'clsclosed' }); releaseId(p.ws); if (p.ws) p.ws.cls = null; });
-  sendClsAdmin(c); AC = null; pushAdmin();
+  c.status = 'cancelled'; clearTimeout(c.t1); clearTimeout(c.t2); clearTimeout(c.expire); clearInterval(c.tick);
+  c.players.forEach(p => { send(p.ws, { t: 'clsclosed', reason }); releaseId(p.ws); if (p.ws) p.ws.cls = null; });
+  sendClsAdmin(c, { reason }); AC = null; pushAdmin();
 }
 function joinClass(ws, m) {
   const c = AC, err = msg => send(ws, { t: 'joinerr', msg });
@@ -405,7 +409,7 @@ wss.on('connection', ws => {
     else if (m.t === 'restore' && admins.has(ws)) {
       const d = m.data;
       if (d && d.students && typeof d.students === 'object' && Array.isArray(d.lb) && Array.isArray(d.history)) {
-        ST = d.students; LB = d.lb; history = d.history; if (Array.isArray(d.sessions)) CS = d.sessions; if (d.config && Array.isArray(d.config.texts)) cfg = Object.assign({ mode: 'preset', cpm: 400 }, d.config);
+        ST = d.students; LB = d.lb; history = d.history; if (Array.isArray(d.sessions)) CS = d.sessions; if (d.config && Array.isArray(d.config.texts)) cfg = Object.assign({ mode: 'preset', cpm: 400, classDur: 5 }, d.config);
         save('config', 'students', 'lb', 'history', 'sessions'); pushAdmin();
       }
     }
@@ -428,7 +432,7 @@ wss.on('connection', ws => {
     } else if (m.t === 'setcfg' && admins.has(ws)) {
       const d = Math.round(+m.duration), tx = (m.texts || []).filter(t => t && t.text).map(t => ({ title: String(t.title || '').slice(0, 80), text: String(t.text).replace(/\s+/g, ' ').trim().slice(0, 6000) }));
       const mode = m.mode === 'random' ? 'random' : 'preset', cpm = Math.min(800, Math.max(200, Math.round(+m.cpm) || 400));
-      if (d >= 1 && d <= 5 && (tx.length || mode === 'random')) { cfg = { duration: d, mode, cpm, texts: tx.slice(0, 300) }; save('config'); }
+      if (d >= 1 && d <= 5 && (tx.length || mode === 'random')) { const cdur = Math.round(+m.classDur); cfg = { duration: d, classDur: cdur >= 1 && cdur <= 5 ? cdur : 5, mode, cpm, texts: tx.slice(0, 300) }; save('config'); }
       pushAdmin();
     }
   });

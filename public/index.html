@@ -77,7 +77,7 @@ function on(m){
     if(m.sid&&celId!==m.sid){celId=m.sid;if(view==='cls'&&m.players.length&&m.players[0].score>0)celebrate(m.players[0])}}
   else if(m.t==='clserr'){wantCls=false;alert(m.msg)}
   else if(m.t==='clsres'){CR=m.session;if(view==='lb')render()}
-  else if(m.t==='clsclosed'){err='Giám thị đã hủy lớp thi.';reset()}
+  else if(m.t==='clsclosed'){err=m.reason==='timeout'?'Lớp thi đã bị hủy vì quá 10 phút chưa bắt đầu.':'Giám thị đã hủy lớp thi.';reset()}
   else if(m.t==='joinerr'){err=m.msg;render()}
   else if(m.t==='lb'){LBD=m.data;LBD.classes=m.classes;LBD.classTop=m.classTop;if(view==='lb')render()}
   else if(m.t==='resync'){if(ta)ta.value=m.text}
@@ -100,7 +100,7 @@ function join(solo){
   LS.set('tp_name',name);LS.set('tp_mssv',mssv);
   if(name.length<2){err='Vui lòng nhập họ tên.';return render()}
   if(!/^[A-Z0-9]{5,15}$/.test(mssv)){err='MSSV không hợp lệ (5–15 ký tự chữ hoặc số, ví dụ TH12345).';return render()}
-  err='';tx({t:'join',name,mssv,code:solo?'':$('#cd').value,solo})
+  err='';const sdv=solo?(+$('#sd').value||5):0;if(solo)LS.set('tp_sdur',String(sdv));tx({t:'join',name,mssv,code:solo?'':$('#cd').value,solo,dur:sdv})
 }
 function joinClass(){
   name=($('#nm').value||'').replace(/\s+/g,' ').trim();mssv=($('#ms').value||'').trim().toUpperCase();clsCode=($('#cc').value||'').trim().toUpperCase();
@@ -133,11 +133,11 @@ function render(){
   const a=$('#app');fitTxt();
   setNav();
   if(view==='home')a.innerHTML=`<div class="card"><h2 style="margin-top:0">Thi gõ đối kháng 1–1</h2>
-  <p class="mu">Hai người vào cùng một phòng, gõ cùng một đoạn tiếng Việt. Điểm = tốc độ (WPM) × độ chính xác². Chấm theo từng từ: chỉ từ gõ đúng hoàn toàn mới được tính tốc độ, và gõ sai một từ không ảnh hưởng các từ sau. Thời gian mỗi lượt: <b>${dur} phút</b>.<br>MSSV là duy nhất, dùng để định danh bạn và lưu điểm cao nhất. Lần đầu nhập sẽ đăng ký họ tên cho MSSV đó; các lần sau phải nhập đúng họ tên.</p>
+  <p class="mu">Hai người vào cùng một phòng, gõ cùng một đoạn tiếng Việt. Điểm = tốc độ (WPM) × độ chính xác². Chấm theo từng từ: chỉ từ gõ đúng hoàn toàn mới được tính tốc độ, và gõ sai một từ không ảnh hưởng các từ sau. Thi đối kháng: <b>${dur} phút</b>; thi một mình: tự chọn 1–5 phút.<br>MSSV là duy nhất, dùng để định danh bạn và lưu điểm cao nhất. Lần đầu nhập sẽ đăng ký họ tên cho MSSV đó; các lần sau phải nhập đúng họ tên.</p>
   ${err?`<p style="color:var(--bad)">${esc(err)}</p>`:''}
   <div class="row"><div class="grow"><label>Họ và tên</label><input id="nm" value="${esc(name)}" maxlength="40" placeholder="Nguyễn Văn A"></div><div class="grow"><label>MSSV (duy nhất)</label><input id="ms" value="${esc(mssv)}" maxlength="15" placeholder="TH12345" autocapitalize="characters" style="text-transform:uppercase"></div>
   <div class="grow"><label>Mã phòng (tuỳ chọn, để ghép đúng cặp)</label><input id="cd" maxlength="20" placeholder="Để trống = ghép tự động"></div></div>
-  <div class="row" style="margin-top:14px"><button class="b2" onclick="join(true)">Thi một mình</button><button onclick="join(false)" style="margin-left:auto">⚔️ Thi đối kháng</button></div></div>
+  <div class="row" style="margin-top:14px"><select id="sd" title="Thời gian thi một mình" style="width:auto">${[1,2,3,4,5].map(m=>`<option value="${m}" ${m===(+LS.get('tp_sdur')||5)?'selected':''}>⏱ ${m} phút</option>`).join('')}</select><button class="b2" onclick="join(true)">Thi một mình</button><button onclick="join(false)" style="margin-left:auto">⚔️ Thi đối kháng</button></div></div>
   <div class="card"><h3 style="margin:0 0 4px">🏫 Thi theo lớp</h3><p class="mu" style="margin-top:0">Giám thị cung cấp mã lớp và mật khẩu. Cả lớp vào phòng chờ và thi cùng lúc trên cùng một đoạn văn. (Nhập Họ tên và MSSV ở trên.)</p>
   <div class="row" style="align-items:flex-end"><div class="grow"><label>Mã lớp</label><input id="cc" value="${esc(clsCode)}" maxlength="20" placeholder="SD2101" style="text-transform:uppercase"></div><div class="grow"><label>Mật khẩu lớp</label><input id="cp" type="password" maxlength="30" autocomplete="off"></div><button onclick="joinClass()">Vào lớp thi</button></div></div>
   <div class="card mu">Giữ đúng dấu tiếng Việt, dùng Space để sang từ tiếp theo và Backspace để sửa lỗi. Từ nào gõ sai sẽ tô đỏ sau khi bạn bấm Space. Dán văn bản bị chặn.</div>`;
@@ -304,12 +304,12 @@ function lbView(a){if(lbDur==='cls')return clsLb(a);
 function renStu(k){const n=prompt('Họ tên mới cho '+k+':');if(n)tx({t:'renstudent',mssv:k,name:n})}
 function delStu(k){if(confirm('Xóa sinh viên '+k+' và điểm trong bảng xếp hạng? MSSV này sẽ được đăng ký lại từ đầu.'))tx({t:'delstudent',mssv:k})}
 function admClsCard(){
-  const c=A.cls,SS=A.sessions||[],full=A.role!==2;
+  const c=A.cls,SS=A.sessions||[],full=A.role!==2,cd=full?(A.cfg.classDur||5):(A.cfg.duration||5);
   return `<div class="card"><h2 style="margin-top:0">🏫 Thi theo lớp</h2>`+(c?`<p>Đang có lớp <b>${esc(c.code)}</b> (${c.total} sinh viên, trạng thái: ${{open:'đang chờ',countdown:'chuẩn bị',running:'đang thi'}[c.status]||c.status}). Mỗi lúc chỉ có 1 lớp thi.</p><button onclick="openCls()">Mở màn hình điều khiển</button>`:
   `<div class="row"><div class="grow"><label>Mã lớp</label><input id="kc" maxlength="20" placeholder="SD2101" style="text-transform:uppercase"></div><div class="grow"><label>Mật khẩu lớp</label><input id="kp" maxlength="30" placeholder="ít nhất 3 ký tự"></div></div>
   <div class="row" style="margin-top:10px"><div><label>Sĩ số tối đa</label><input id="kx" type="number" min="2" max="100" value="60" style="width:100px"></div>${full?`<div class="grow"><label>Loại đề thi</label><select id="kt"><option value="">Theo cấu hình chung (${A.cfg.mode==='random'?'Ngẫu nhiên':'Chọn sẵn'})</option><option value="preset">Chọn sẵn (ngân hàng đề mẫu)</option><option value="random">Ngẫu nhiên (hệ thống tạo)</option></select></div>`:''}</div>
   <div class="row" style="margin-top:12px"><button onclick="createCls()">Tạo phòng thi lớp</button></div>
-  <p class="mu">Sinh viên nhập mã lớp và mật khẩu ở trang chủ để vào phòng chờ. Khi bạn bấm “Bắt đầu thi”, cả lớp thi cùng lúc và không nhận thêm người. Mỗi lúc chỉ có 1 lớp thi. Thời gian thi theo lớp cố định <b>5 phút</b>${full?'':'; loại đề thi và nội dung do giám thị 1 cấu hình'}.</p>`)
+  <p class="mu">Sinh viên nhập mã lớp và mật khẩu ở trang chủ để vào phòng chờ. Khi bạn bấm “Bắt đầu thi”, cả lớp thi cùng lúc và không nhận thêm người. Mỗi lúc chỉ có 1 lớp thi. Thời gian thi theo lớp: <b>${cd} phút</b> (do giám thị 1 cấu hình)${full?'':'; loại đề thi và nội dung cũng do giám thị 1 cấu hình'}. Lớp tự hủy nếu quá <b>10 phút</b> chưa bắt đầu thi.</p>`)
   +(SS.length?`<h3>Các buổi thi theo lớp đã lưu</h3><div style="max-height:260px;overflow:auto"><table><tr><th>Lớp</th><th>Thời gian</th><th>Sĩ số</th><th>Điểm TB</th><th></th></tr>${SS.map(x=>`<tr><td>${esc(x.code)}</td><td>${new Date(x.at).toLocaleString('vi-VN')}<br><span class="mu">${x.dur} phút</span></td><td>${x.count}</td><td>${x.avgScore}</td><td><button class="g" onclick="viewSess(${x.id})">Xem</button>${A.role===2?'':` <button class="g" onclick="renSess(${x.id},\'${esc(x.code)}\')">Đổi mã</button> <button class="g" onclick="delSess(${x.id})">✕ Xóa</button>`}</td></tr>`).join('')}</table></div>`:'')+`</div>`;
 }
 function createCls(){const cd=($('#kc').value||'').trim().toUpperCase();if(cd&&(A.sessions||[]).some(x=>x.code===cd)){alert('Mã lớp "'+cd+'" đã được dùng cho một buổi thi trước đó. Hãy đặt mã khác.');return}
@@ -331,7 +331,7 @@ function updCls(){
   const e=performance.now()-CA.t0,st=CA.status;
   const lb={open:'Đang chờ sinh viên',countdown:'Chuẩn bị',running:'Đang thi',finished:'Đã kết thúc',cancelled:'Đã hủy'}[st]||st;
   const tm=st==='open'?'Đang chờ…':st==='countdown'?'Chuẩn bị… '+Math.max(1,Math.ceil((CA.toStart-e)/1000)):st==='running'?fmt(CA.toEnd-e-300):st==='finished'?'Hết giờ':'Đã hủy';
-  el.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🏫 Lớp ${esc(CA.code)}</h2><span class="tag">${lb}</span></div><p class="mu" style="margin:6px 0 0">Mật khẩu: <b>${esc(CA.password)}</b> · ${CA.dur} phút · Sĩ số: <b>${CA.total}</b>/${CA.max}</p></div><div class="timer">${tm}</div>
+  el.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">🏫 Lớp ${esc(CA.code)}</h2><span class="tag">${lb}</span></div><p class="mu" style="margin:6px 0 0">Mật khẩu: <b>${esc(CA.password)}</b> · ${CA.dur} phút · Sĩ số: <b>${CA.total}</b>/${CA.max}${st==='open'&&CA.toExpire>0?` · <span style="color:var(--bad)">⏰ tự hủy sau ${fmt(CA.toExpire-e)} nếu chưa bắt đầu</span>`:''}${st==='cancelled'&&CA.reason==='timeout'?' · <span style="color:var(--bad)">⏰ đã tự hủy vì quá 10 phút chưa bắt đầu thi</span>':''}</p></div><div class="timer">${tm}</div>
   <div class="card" style="padding:8px;overflow-x:auto"><table><tr><th>#</th><th style="text-align:left">Họ tên</th><th>MSSV</th><th>WPM</th><th>Chính xác</th><th>Tiến độ</th><th>Điểm</th><th></th></tr>${CA.players.map((p,i)=>`<tr><td>${i+1}</td><td style="text-align:left">${esc(p.name)}</td><td>${esc(p.mssv)}</td><td>${p.wpm}</td><td>${p.acc}%</td><td>${Math.round(pct(p.correct,p.len))}%</td><td><b>${p.score}</b></td><td>${p.cheat?'🚩 '+esc(p.cheat):p.left?'Bỏ thi':p.done?'✔':p.disc?'Mất kết nối':''}${p.warn?' ⚠ '+esc(p.warn):''}</td></tr>`).join('')||'<tr><td colspan="8" class="mu">Chưa có sinh viên vào lớp.</td></tr>'}</table></div>`;
   const sh=(i,v)=>{const b=$(i);if(b)b.style.display=v?'':'none'};
   sh('#b1',st==='open');sh('#b2',st==='running');sh('#b3',st==='open'||st==='countdown');sh('#b4',st==='finished'&&CA.players.length&&CA.players[0].score>0);
@@ -365,13 +365,13 @@ function adminView(a){if(A.role===2)return procView(a);
   ${H.length?`<table><tr><th>Cặp thi</th><th>Điểm</th><th>WPM</th><th>Chính xác</th><th>Thắng</th><th></th></tr>${H.map(h=>{const[a,b]=h.players;return`<tr><td>${esc(a.name)} (${esc(a.mssv)}) vs ${esc(b.name)} (${esc(b.mssv)})</td><td>${a.score} – ${b.score}</td><td>${a.wpm} – ${b.wpm}</td><td>${a.acc}% – ${b.acc}%</td><td>${h.winner<0?'Hòa':esc(h.players[h.winner].name)}</td><td><button class="g" onclick="celH(${A.history.indexOf(h)})">🎉</button></td></tr>`}).join('')}</table>`:'<p class="mu">Chưa có kết quả.</p>'}</div>`;
 }
 let DR=null,svSaving=false;
-function draft(){if(!DR)DR={duration:A.cfg.duration,mode:A.cfg.mode||'preset',cpm:A.cfg.cpm||400,bank:(A.cfg.texts||[]).map(t=>({title:t.title||'',text:t.text||''}))};return DR}
+function draft(){if(!DR)DR={duration:A.cfg.duration,classDur:A.cfg.classDur||5,mode:A.cfg.mode||'preset',cpm:A.cfg.cpm||400,bank:(A.cfg.texts||[]).map(t=>({title:t.title||'',text:t.text||''}))};return DR}
 const cnt=t=>{t=(t||'').replace(/\s+/g,' ').trim();return t?t.length+' ký tự · '+t.split(' ').length+' từ':'Chưa có nội dung'};
 function bankHTML(){return draft().bank.map((b,i)=>`<div class="p" style="margin-bottom:10px"><div class="row"><b class="mu">Đoạn ${i+1}</b><input placeholder="Tiêu đề (tùy chọn)" value="${esc(b.title)}" oninput="DR.bank[${i}].title=this.value" style="flex:1;min-width:140px"><button class="g" onclick="delPass(${i})">✕ Xóa</button></div>
   <textarea class="f" rows="4" style="margin-top:8px" placeholder="Nhập nội dung đoạn văn…" oninput="DR.bank[${i}].text=this.value;cfgInfo();$('#pc${i}').textContent=cnt(this.value)">${esc(b.text)}</textarea><div class="mu" id="pc${i}">${cnt(b.text)}</div></div>`).join('')||'<p class="mu">Ngân hàng đang trống. Bấm “Thêm đoạn” hoặc “Dán nhiều đoạn”.</p>'}
 function infoHTML(){
   const d=draft(),tot=d.bank.reduce((a,b)=>a+(b.text||'').replace(/\s+/g,' ').trim().length,0),n=d.bank.filter(b=>(b.text||'').trim()).length;
-  let h=`Đề ${d.duration} phút ≈ <b>${d.duration*d.cpm}</b> ký tự (≈ ${Math.round(d.cpm/5)} WPM). Thi theo lớp (5 phút) ≈ <b>${5*d.cpm}</b> ký tự. Ngân hàng: ${n} đoạn, ${tot} ký tự.`;
+  let h=`Đối kháng ${d.duration} phút ≈ <b>${d.duration*d.cpm}</b> ký tự (≈ ${Math.round(d.cpm/5)} WPM); thi theo lớp ${d.classDur} phút ≈ <b>${d.classDur*d.cpm}</b> ký tự; thi một mình tối đa 5 phút ≈ <b>${5*d.cpm}</b> ký tự. Ngân hàng: ${n} đoạn, ${tot} ký tự.`;
   if(d.mode==='preset'&&!n)h+=' <span style="color:var(--bad)">⚠ Loại “Chọn sẵn” cần ít nhất 1 đoạn.</span>';
   else if(d.mode==='preset'&&tot<5*d.cpm)h+=' <span style="color:var(--bad)">⚠ Ngân hàng ngắn hơn một đề 5 phút nên các đoạn sẽ bị lặp lại; nên nhập thêm.</span>';
   return h;
@@ -380,11 +380,12 @@ function cfgInfo(){const e=$('#cfgi');if(e)e.innerHTML=infoHTML()}
 function cfgCard(){
   const d=draft();
   return `<div class="card"><h2 style="margin-top:0">Cấu hình cuộc thi</h2>
-  <div class="row" style="align-items:flex-end"><div><label>Thời gian mỗi lượt (đối kháng, thi một mình)</label><select onchange="draft().duration=+this.value;cfgInfo()">${[1,2,3,4,5].map(m=>`<option value="${m}" ${m===d.duration?'selected':''}>${m} phút</option>`).join('')}</select></div>
+  <div class="row" style="align-items:flex-end"><div><label>Thời gian thi đối kháng</label><select onchange="draft().duration=+this.value;cfgInfo()">${[1,2,3,4,5].map(m=>`<option value="${m}" ${m===d.duration?'selected':''}>${m} phút</option>`).join('')}</select></div>
+  <div><label>Thời gian thi theo lớp</label><select onchange="draft().classDur=+this.value;cfgInfo()">${[1,2,3,4,5].map(m=>`<option value="${m}" ${m===d.classDur?'selected':''}>${m} phút</option>`).join('')}</select></div>
   <div><label>Loại đề thi</label><select onchange="draft().mode=this.value;cfgInfo()"><option value="preset" ${d.mode==='preset'?'selected':''}>Chọn sẵn (lấy từ ngân hàng đề mẫu)</option><option value="random" ${d.mode==='random'?'selected':''}>Ngẫu nhiên (hệ thống tự tạo)</option></select></div>
   <div><label>Độ dài đề (ký tự mỗi phút)</label><input type="number" min="200" max="800" step="50" value="${d.cpm}" oninput="draft().cpm=Math.min(800,Math.max(200,+this.value||400));cfgInfo()" style="width:140px"></div></div>
   <p class="mu" id="cfgi" style="margin:10px 0 0">${infoHTML()}</p>
-  <p class="mu" style="margin:6px 0 0"><b>Chọn sẵn:</b> mỗi lượt thi hệ thống bốc ngẫu nhiên các đoạn trong ngân hàng và ghép lại cho đủ độ dài theo số phút. <b>Ngẫu nhiên:</b> hệ thống tự ghép nhiều câu từ kho câu có sẵn. Áp dụng cho đối kháng, thi một mình và thi theo lớp (giám thị 1 có thể đổi loại đề riêng cho từng lớp).</p>
+  <p class="mu" style="margin:6px 0 0"><b>Chọn sẵn:</b> mỗi lượt thi hệ thống bốc ngẫu nhiên các đoạn trong ngân hàng và ghép lại cho đủ độ dài theo số phút. <b>Ngẫu nhiên:</b> hệ thống tự ghép nhiều câu từ kho câu có sẵn. Loại đề áp dụng cho đối kháng, thi một mình (sinh viên tự chọn 1–5 phút) và thi theo lớp (giám thị 1 có thể đổi loại đề riêng cho từng lớp).</p>
   <h3 style="margin-bottom:8px">📚 Ngân hàng đề mẫu</h3><div id="bank">${bankHTML()}</div>
   <div class="row"><button class="g" onclick="addPass()">➕ Thêm đoạn</button><button class="g" onclick="$('#bulk').style.display=$('#bulk').style.display==='none'?'':'none'">📥 Dán nhiều đoạn</button></div>
   <div id="bulk" style="display:none;margin-top:10px"><label>Dán nhiều đoạn văn, mỗi đoạn cách nhau bằng một dòng trống</label><textarea id="bk" class="f" rows="6"></textarea><div class="row" style="margin-top:8px"><button onclick="bulkAdd()">Thêm vào ngân hàng</button></div></div>
@@ -400,7 +401,7 @@ function bulkAdd(){
 function saveCfg(){
   const d=draft(),texts=d.bank.map(b=>({title:(b.title||'').trim(),text:(b.text||'').replace(/\s+/g,' ').trim()})).filter(t=>t.text);
   if(!texts.length&&d.mode==='preset'){$('#sv').textContent='Loại đề “Chọn sẵn” cần ít nhất 1 đoạn trong ngân hàng.';return}
-  svSaving=true;tx({t:'setcfg',duration:d.duration,mode:d.mode,cpm:d.cpm,texts});$('#sv').textContent='Đã lưu ✔';
+  svSaving=true;tx({t:'setcfg',duration:d.duration,classDur:d.classDur,mode:d.mode,cpm:d.cpm,texts});$('#sv').textContent='Đã lưu ✔';
 }
 function csv(){
   const q=v=>'"'+String(v).replace(/"/g,'""')+'"',L=['MSSV 1,Thí sinh 1,Điểm 1,WPM 1,Chính xác 1,MSSV 2,Thí sinh 2,Điểm 2,WPM 2,Chính xác 2,Người thắng'];

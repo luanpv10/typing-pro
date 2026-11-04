@@ -53,6 +53,10 @@ Máy chủ là nơi quyết định, trình duyệt gửi kèm số liệu bàn 
 - Loại đề mặc định áp dụng cho đối kháng, thi một mình và thi theo lớp; giám thị 1 có thể chọn loại đề riêng khi tạo lớp. Giám thị 2 luôn dùng cấu hình chung.
 
 ## Thời gian thi
-- **Thi một mình:** sinh viên tự chọn 1, 2, 3, 4 hoặc 5 phút (mặc định 5); điểm xếp hạng theo từng mốc.
+- **Thi một mình:** sinh viên tự chọn 1, 2, 3, 4 hoặc 5 phút (mặc định 2); điểm xếp hạng theo từng mốc.
 - **Thi đối kháng** và **thi theo lớp:** giám thị 1 đặt thời gian trong “Cấu hình cuộc thi” (mỗi loại một ô, mặc định 5 phút).
 - Lớp thi tự hủy nếu sau 10 phút kể từ lúc tạo mà giám thị chưa bấm “Bắt đầu thi” (có thể đổi bằng biến môi trường `CLASS_WAIT_SEC`, tính bằng giây).
+
+## Thống kê trên bảng xếp hạng
+Đầu bảng xếp hạng hiển thị: **tổng số sinh viên tham gia**, **tổng số lớp** đã thi, và **người thi nhiều nhất** kèm số lần thi. Mỗi lượt thi (đối kháng, thi một mình, thi theo lớp) đều được đếm, kể cả khi không đạt điểm cao hơn, bỏ giữa chừng hay kết thúc sớm; lượt chưa bắt đầu (đang chờ/đếm ngược rồi hủy) thì không tính. Nếu nhiều người cùng số lần cao nhất, hiển thị tối đa 5 người.
+Thi một mình: mặc định 2 phút. Thi đối kháng và thi theo lớp: mặc định 5 phút; cấu hình cũ lưu trước bản này được đặt lại về 5 phút một lần khi khởi động.

@@ -40,11 +40,13 @@ async function loadAll() {
   try {
     const [c, st, l, h, cs] = await Promise.all([kvGet('config'), kvGet('students'), kvGet('lb'), kvGet('history'), kvGet('sessions')]);
     if (c && c.texts) cfg = Object.assign({ mode: 'preset', cpm: 400, classDur: 5 }, c); if (st) ST = st; if (l) LB = l; if (h) history = h; if (Array.isArray(cs)) CS = cs;
+    if (c && c.texts && !c.v) { cfg.duration = 5; cfg.classDur = 5; cfg.v = 2; save('config'); } // cấu hình bản cũ: đặt lại mặc định 5 phút một lần
+    backfillPlays();
     console.log(DB ? 'Lưu trữ: Upstash Redis (vĩnh viễn). Sinh viên: ' + Object.keys(ST).length : 'CẢNH BÁO: chưa cấu hình Upstash – dữ liệu lưu file tạm, sẽ mất khi Render khởi động lại.');
   } catch (e) { console.error('Không đọc được dữ liệu, dừng để tránh ghi đè:', e.message); process.exit(1); }
 }
 process.on('SIGTERM', async () => { await flush(); process.exit(0); });
-let cfg = { duration: 5, classDur: 5, mode: 'preset', cpm: 400, texts: [
+let cfg = { v: 2, duration: 5, classDur: 5, mode: 'preset', cpm: 400, texts: [
  { title: 'Hà Nội mùa thu', text: 'Hà Nội vào thu, những cơn gió se lạnh len qua từng con phố nhỏ. Hương hoa sữa thoang thoảng trong không khí khiến lòng người chợt dịu lại. Trên hè phố, người ta ngồi bên tách cà phê nóng, lặng lẽ ngắm lá vàng rơi. Mùa thu ở đây không ồn ào mà sâu lắng, như một bản nhạc cũ nhẹ nhàng ngân vang trong ký ức của mỗi người con đất Việt.' },
  { title: 'Giá trị của việc học', text: 'Học tập không chỉ là việc ghi nhớ kiến thức mà còn là quá trình rèn luyện tư duy và nhân cách. Mỗi sinh viên cần biết đặt câu hỏi, dám thử nghiệm và không sợ thất bại. Thành công không đến từ may mắn, mà đến từ sự kiên trì mỗi ngày. Khi chúng ta chịu khó luyện tập, những điều tưởng chừng khó khăn sẽ dần trở nên quen thuộc và đơn giản hơn rất nhiều.' },
  { title: 'Công nghệ và cuộc sống', text: 'Công nghệ thông tin đã thay đổi hoàn toàn cách con người làm việc, học tập và giao tiếp. Chỉ với một chiếc máy tính kết nối mạng, chúng ta có thể tiếp cận kho tri thức khổng lồ của nhân loại. Tuy nhiên, việc sử dụng công nghệ một cách thông minh và có trách nhiệm mới là điều quan trọng nhất. Kỹ năng gõ phím nhanh và chính xác là nền tảng giúp mọi người làm việc hiệu quả hơn.' }
@@ -182,6 +184,7 @@ function start(r) {
 function finish(r) {
   if (r.status === 'finished') return;
   r.status = 'finished'; clearTimeout(r.t1); clearTimeout(r.t2); clearInterval(r.tick);
+  r.players.forEach(p => bumpPlay(p.mssv));
   const now = Date.now(), s = r.players.map(p => stat(p, r, now));
   let w = -1;
   if (s.length === 2) {
@@ -230,7 +233,7 @@ function join(ws, m) {
   const code = String(m.code || 'auto').replace(/[^\w-]/g, '').slice(0, 20) || 'auto';
   const p = { ws, name, mssv, typed: '' };
   if (m.solo) {
-    const sd = Math.round(+m.dur), sdur = sd >= 1 && sd <= 5 ? sd : 5;
+    const sd = Math.round(+m.dur), sdur = sd >= 1 && sd <= 5 ? sd : 2; // thi một mình: mặc định 2 phút
     const ex = buildExam(sdur, cfg.mode);
     const r = { id: ++seq, solo: true, text: ex, words: ex.split(' '), dur: sdur, players: [p], status: 'waiting' };
     rooms.set(r.id, r); ws.room = r; return start(r);
@@ -250,6 +253,28 @@ let AC = null;
 const rankCmp = (a, b) => b.s.score - a.s.score || b.s.acc - a.s.acc || b.s.correct - a.s.correct;
 const slim = (s, p) => ({ name: s.name, mssv: s.mssv, score: s.score, wpm: s.wpm, acc: s.acc, correct: s.correct, len: s.len, done: s.done, disc: !!p.disc, left: !!p.left, cheat: s.cheat, warn: s.warn });
 const clsSnap = (c, now) => c.players.map(p => ({ p, s: stat(p, c, now) })).sort(rankCmp);
+// ===== Thống kê số lần thi (mỗi lượt thi đều tính, kể cả khi không đạt điểm cao hơn) =====
+function bumpPlay(mssv) { if (ST[mssv]) { ST[mssv].plays = (ST[mssv].plays || 0) + 1; save('students'); } }
+function backfillPlays() { // dữ liệu cũ chưa có số lần thi: ước lượng tối thiểu từ lịch sử, lớp và bảng xếp hạng (chạy một lần)
+  let changed = false;
+  for (const [k, v] of Object.entries(ST)) {
+    if (typeof v.plays === 'number') continue;
+    const h = history.reduce((n, x) => n + x.players.filter(p => p.mssv === k).length, 0);
+    const c = CS.reduce((n, x) => n + x.results.filter(r => r.mssv === k).length, 0);
+    v.plays = Math.max(h + c, LB.filter(e => e.mssv === k).length); changed = true;
+  }
+  if (changed) save('students');
+}
+function lbStats() {
+  const part = new Set();
+  Object.entries(ST).forEach(([k, v]) => { if ((v.plays || 0) > 0) part.add(k); });
+  LB.forEach(e => e.mssv && part.add(e.mssv));
+  CS.forEach(c => c.results.forEach(r => r.mssv && part.add(r.mssv)));
+  history.forEach(h => h.players.forEach(p => p.mssv && part.add(p.mssv)));
+  let max = 0; Object.values(ST).forEach(v => { if ((v.plays || 0) > max) max = v.plays; });
+  const people = Object.entries(ST).filter(([k, v]) => max > 0 && (v.plays || 0) === max).map(([k, v]) => ({ mssv: k, name: v.name }));
+  return { students: part.size, classes: new Set(CS.map(c => c.code)).size, most: { plays: max, people: people.slice(0, 5), more: Math.max(0, people.length - 5) } };
+}
 function classTop() {
   const best = new Map();
   CS.forEach(x => x.results.forEach(r => {
@@ -308,6 +333,7 @@ function clsFinish(c) {
   c.status = 'finished'; clearTimeout(c.t1); clearTimeout(c.t2); clearTimeout(c.expire); clearInterval(c.tick);
   const now = Date.now(), arr = clsSnap(c, now);
   const results = arr.map((x, i) => ({ rank: i + 1, mssv: x.s.mssv, name: x.s.name, score: x.s.score, wpm: x.s.wpm, acc: x.s.acc, correct: x.s.correct, len: x.s.len, done: x.s.done, left: !!x.p.left, cheat: x.s.cheat }));
+  arr.forEach(x => bumpPlay(x.p.mssv));
   arr.forEach(x => { if (!x.p.left) recordLB(x.s, c.dur); }); saveLB();
   const ok = results.filter(r => !r.left && !r.cheat), avg = k => ok.length ? Math.round(ok.reduce((a, r) => a + r[k], 0) / ok.length * 10) / 10 : 0;
   const sess = { id: Date.now(), code: c.code, dur: c.dur, at: c.startAt || now, count: ok.length, finished: ok.filter(r => r.done).length,
@@ -381,7 +407,7 @@ wss.on('connection', ws => {
       const now = Date.now(); send(ws, specMsg(r, now, r.players.map(p => stat(p, r, now))));
     }
     else if (m.t === 'unwatch') unwatch(ws);
-    else if (m.t === 'lb') send(ws, { t: 'lb', data: lbData(), classes: classSummaries(), classTop: classTop() });
+    else if (m.t === 'lb') send(ws, { t: 'lb', data: lbData(), classes: classSummaries(), classTop: classTop(), stats: lbStats() });
     else if (m.t === 'clsres') { const x = CS.find(c => c.id === +m.id); send(ws, { t: 'clsres', session: x || null }); }
     else if (m.t === 'delstudent' && admins.has(ws)) { const k = String(m.mssv); delete ST[k]; LB = LB.filter(e => e.mssv !== k); saveST(); saveLB(); pushAdmin(); }
     else if (m.t === 'renstudent' && admins.has(ws)) {
@@ -432,7 +458,7 @@ wss.on('connection', ws => {
     } else if (m.t === 'setcfg' && admins.has(ws)) {
       const d = Math.round(+m.duration), tx = (m.texts || []).filter(t => t && t.text).map(t => ({ title: String(t.title || '').slice(0, 80), text: String(t.text).replace(/\s+/g, ' ').trim().slice(0, 6000) }));
       const mode = m.mode === 'random' ? 'random' : 'preset', cpm = Math.min(800, Math.max(200, Math.round(+m.cpm) || 400));
-      if (d >= 1 && d <= 5 && (tx.length || mode === 'random')) { const cdur = Math.round(+m.classDur); cfg = { duration: d, classDur: cdur >= 1 && cdur <= 5 ? cdur : 5, mode, cpm, texts: tx.slice(0, 300) }; save('config'); }
+      if (d >= 1 && d <= 5 && (tx.length || mode === 'random')) { const cdur = Math.round(+m.classDur); cfg = { v: 2, duration: d, classDur: cdur >= 1 && cdur <= 5 ? cdur : 5, mode, cpm, texts: tx.slice(0, 300) }; save('config'); }
       pushAdmin();
     }
   });

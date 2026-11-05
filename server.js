@@ -29,7 +29,7 @@ async function kvSet(k, v) {
   fs.writeFileSync(path.join(__dirname, k + '.json'), JSON.stringify(v));
 }
 const dirty = new Set(); let flushTimer = null;
-const valOf = k => ({ config: cfg, students: ST, lb: LB, history, sessions: CS, recent: RECENT }[k]);
+const valOf = k => ({ config: cfg, students: ST, lb: LB, history, sessions: CS, recent: RECENT, cheatlog: CHEATLOG }[k]);
 function save(...keys) { keys.forEach(k => dirty.add(k)); if (!flushTimer) flushTimer = setTimeout(flush, 1500); }
 async function flush() {
   clearTimeout(flushTimer); flushTimer = null;
@@ -38,8 +38,8 @@ async function flush() {
 }
 async function loadAll() {
   try {
-    const [c, st, l, h, cs, rc] = await Promise.all([kvGet('config'), kvGet('students'), kvGet('lb'), kvGet('history'), kvGet('sessions'), kvGet('recent')]);
-    if (c && c.texts) cfg = Object.assign({ mode: 'preset', cpm: 400, classDur: 5 }, c); if (st) ST = st; if (l) LB = l; if (h) history = h; if (Array.isArray(cs)) CS = cs; if (Array.isArray(rc)) RECENT = rc;
+    const [c, st, l, h, cs, rc, cl] = await Promise.all([kvGet('config'), kvGet('students'), kvGet('lb'), kvGet('history'), kvGet('sessions'), kvGet('recent'), kvGet('cheatlog')]);
+    if (c && c.texts) cfg = Object.assign({ mode: 'preset', cpm: 400, classDur: 5 }, c); if (st) ST = st; if (l) LB = l; if (h) history = h; if (Array.isArray(cs)) CS = cs; if (Array.isArray(rc)) RECENT = rc; if (Array.isArray(cl)) CHEATLOG = cl;
     if (c && c.texts && !c.v) { cfg.duration = 5; cfg.classDur = 5; cfg.v = 2; save('config'); } // cấu hình bản cũ: đặt lại mặc định 5 phút một lần
     backfillPlays();
     console.log(DB ? 'Lưu trữ: Upstash Redis (vĩnh viễn). Sinh viên: ' + Object.keys(ST).length : 'CẢNH BÁO: chưa cấu hình Upstash – dữ liệu lưu file tạm, sẽ mất khi Render khởi động lại.');
@@ -54,6 +54,7 @@ let cfg = { v: 2, duration: 5, classDur: 5, mode: 'preset', cpm: 400, texts: [
 
 // Danh bạ sinh viên: MSSV (duy nhất) -> họ tên
 let ST = {};
+let CHEATLOG = []; // nhật ký các lượt bị hệ thống đánh dấu nghi gian lận (giám thị 1 xem)
 let RECENT = []; // nhật ký các lượt thi gần đây (hiển thị ở trang chủ)
 let CS = []; // các buổi thi theo lớp đã kết thúc (lưu vĩnh viễn)
 const saveST = () => save('students');
@@ -125,7 +126,7 @@ const send = (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); }
 // Chấm điểm theo từ (giống Monkeytype / 10FastFingers): từ gõ sai chỉ mất điểm của chính từ đó,
 // không làm lệch các từ phía sau. Chỉ từ gõ đúng hoàn toàn mới tính vào tốc độ.
 // Chống gian lận: kết hợp số liệu bàn phím thật do trình duyệt gửi (keydown isTrusted) với kiểm tra tốc độ/nhịp gõ ở máy chủ.
-function checkCheat(p, m, now) {
+function checkCheat(p, m, now, ctx) {
   if (p.cheat) return true;
   const len = p.typed.length, tl = m.tl;
   (p.hist = p.hist || []).push({ t: now, len });
@@ -142,7 +143,13 @@ function checkCheat(p, m, now) {
     else if (sy >= 3) why = 'Có sự kiện nhập giả lập (không phải bàn phím thật)';
     if (!why && bl >= 4) p.warn = 'Rời khỏi trang ' + bl + ' lần';
   } else if (!tl && len >= 30) p.warn = 'Thiếu dữ liệu kiểm tra từ trình duyệt';
-  if (why) { p.cheat = why; p.doneAt = p.doneAt || now; return true; }
+  if (why) {
+    p.cheat = why; p.doneAt = p.doneAt || now;
+    const cps = dt > 0 ? +(((len - h0.len) / (dt / 1000)).toFixed(1)) : 0;
+    CHEATLOG.push({ at: now, mssv: p.mssv, name: p.name, mode: ctx || '', reason: why, len, cps, tl: tl ? { kd: +tl.kd || 0, sd: +tl.sd, sy: +tl.sy || 0, bl: +tl.bl || 0, wd: tl.wd ? 1 : 0 } : null });
+    if (CHEATLOG.length > 300) CHEATLOG.shift(); save('cheatlog');
+    return true;
+  }
   return false;
 }
 function stat(p, r, now) {
@@ -177,7 +184,7 @@ function pushAdmin() {
   const students = Object.entries(ST).map(([mssv, v]) => ({ mssv, name: v.name }));
   const clsInfo = AC ? { code: AC.code, status: AC.status, total: AC.players.length } : null;
   procs.forEach(ws => send(ws, { t: 'admin', role: 2, cfg: { duration: cfg.classDur || 5 }, cls: clsInfo, sessions: classSummaries() }));
-  admins.forEach(ws => send(ws, { t: 'admin', role: 1, cfg, live, students, history: history.slice(-200), lb: lbData(), persist: DB, cls: AC ? { code: AC.code, status: AC.status, total: AC.players.length } : null, sessions: classSummaries() }));
+  admins.forEach(ws => send(ws, { t: 'admin', role: 1, cfg, live, students, history: history.slice(-200), lb: lbData(), persist: DB, cheatlog: CHEATLOG.slice(-40).reverse(), cls: AC ? { code: AC.code, status: AC.status, total: AC.players.length } : null, sessions: classSummaries() }));
 }
 function start(r) {
   r.status = 'countdown'; const now = Date.now();
@@ -286,7 +293,7 @@ function lbStats() {
   history.forEach(h => h.players.forEach(p => p.mssv && part.add(p.mssv)));
   let max = 0; Object.values(ST).forEach(v => { if ((v.plays || 0) > max) max = v.plays; });
   const people = Object.entries(ST).filter(([k, v]) => max > 0 && (v.plays || 0) === max).map(([k, v]) => ({ mssv: k, name: v.name }));
-  return { students: part.size, classes: new Set(CS.map(c => c.code)).size, most: { plays: max, people: people.slice(0, 5), more: Math.max(0, people.length - 5) } };
+  return { students: part.size, classes: new Set(CS.map(c => c.code)).size, totalPlays: Object.values(ST).reduce((a, v) => a + (v.plays || 0), 0), most: { plays: max, people: people.slice(0, 5), more: Math.max(0, people.length - 5) } };
 }
 // ===== Danh sách người đang online (chỉ giám thị 1): ai, đang làm gì, ở trang nào =====
 const PAGES = { home: 'Trang chủ', lb: 'Đang xem bảng xếp hạng', admin: 'Khu quản trị', cls: 'Màn hình điều khiển lớp thi', spec: 'Theo dõi một phòng thi', online: 'Xem danh sách online', wait: 'Phòng chờ', game: 'Màn hình thi' };
@@ -323,6 +330,23 @@ function presence() {
 }
 function sendPresence(ws) { send(ws, { t: 'presence', list: presence() }); }
 function startPresence() { if (!presTimer) presTimer = setInterval(() => { if (!presSubs.size) { clearInterval(presTimer); presTimer = null; return; } const m = { t: 'presence', list: presence() }; presSubs.forEach(w => send(w, m)); }, 3000); }
+// ===== Hủy điểm: bảng xếp hạng chỉ giữ ĐIỂM CAO NHẤT của mỗi sinh viên, nên một điểm gian lận cũ (chưa bị phát hiện) sẽ chặn mọi điểm thật thấp hơn =====
+function recomputeSession(x) {
+  x.results.sort((a, b) => b.score - a.score || b.acc - a.acc || b.correct - a.correct).forEach((r, i) => { r.rank = i + 1; });
+  const ok = x.results.filter(r => !r.left && !r.cheat), avg = k => ok.length ? Math.round(ok.reduce((a, r) => a + r[k], 0) / ok.length * 10) / 10 : 0;
+  x.count = ok.length; x.finished = ok.filter(r => r.done).length; x.avgScore = avg('score'); x.avgWpm = avg('wpm'); x.avgAcc = avg('acc');
+  x.maxScore = ok.length ? Math.max(...ok.map(r => r.score)) : 0;
+}
+function voidScores(pred, reason) {
+  let n = 0;
+  LB = LB.filter(e => { if (pred(e)) { n++; return false; } return true; });
+  CS.forEach(x => { let ch = false; x.results.forEach(r => { if (!r.left && !r.cheat && pred(r)) { r.cheat = reason; r.score = 0; ch = true; n++; } }); if (ch) recomputeSession(x); });
+  RECENT.forEach(e => {
+    if (e.players) e.players.forEach(p => { if (pred(p) && p.flag !== 'cheat') { p.flag = 'cheat'; p.score = 0; } });
+    else if (e.top && pred(e.top)) e.top = null;
+  });
+  saveLB(); save('sessions', 'recent'); return n;
+}
 function classTop() {
   const best = new Map();
   CS.forEach(x => x.results.forEach(r => {
@@ -429,7 +453,7 @@ function clsTyped(ws, m) {
   const v = String(m.text || '').normalize('NFC').replace(/\s+/g, ' ').replace(/^ /, '').slice(0, c.text.length + 40);
   if (v.length - p.typed.length > 25) return send(ws, { t: 'resync', text: p.typed });
   p.typed = v;
-  if (checkCheat(p, m, Date.now())) { send(ws, { t: 'cheat', reason: p.cheat }); sendClsPlayers(c, false, p); if (c.players.every(x => x.doneAt)) clsFinish(c); return; }
+  if (checkCheat(p, m, Date.now(), 'Thi theo lớp ' + c.code)) { send(ws, { t: 'cheat', reason: p.cheat }); sendClsPlayers(c, false, p); if (c.players.every(x => x.doneAt)) clsFinish(c); return; }
   const tw = v.split(' ');
   if (tw.length === c.words.length && tw[tw.length - 1] === c.words[c.words.length - 1]) {
     p.doneAt = Date.now(); sendClsPlayers(c, false, p);
@@ -476,6 +500,15 @@ wss.on('connection', ws => {
       if ((AC && AC.code === code) || CS.some(c => c !== x && c.code === code)) return err('Mã lớp "' + code + '" đã tồn tại. Mỗi mã lớp phải duy nhất.');
       x.code = code; save('sessions'); pushAdmin();
     }
+    else if (m.t === 'voidstudent' && admins.has(ws)) {
+      const k = String(m.mssv), n = voidScores(x => x.mssv === k, 'Giám thị hủy điểm');
+      send(ws, { t: 'notice', msg: 'Đã hủy ' + n + ' kết quả của ' + k + '. Từ giờ điểm mới của sinh viên này sẽ được ghi nhận lại bình thường.' }); pushAdmin();
+    }
+    else if (m.t === 'voidabnormal' && admins.has(ws)) {
+      const thr = Math.min(400, Math.max(80, Math.round(+m.wpm) || 150)), n = voidScores(x => (x.wpm || 0) >= thr, 'Điểm bất thường (WPM ≥ ' + thr + ')');
+      send(ws, { t: 'notice', msg: 'Đã hủy ' + n + ' kết quả có WPM từ ' + thr + ' trở lên.' }); pushAdmin();
+    }
+    else if (m.t === 'clearcheatlog' && admins.has(ws)) { CHEATLOG = []; save('cheatlog'); pushAdmin(); }
     else if (m.t === 'delsession' && admins.has(ws)) { CS = CS.filter(x => x.id !== +m.id); save('sessions'); pushAdmin(); }
     else if (m.t === 'resetsessions' && admins.has(ws)) { CS = []; save('sessions'); pushAdmin(); }
     else if (m.t === 'clscreate' && isStaff(ws)) clsCreate(ws, m);
@@ -483,13 +516,13 @@ wss.on('connection', ws => {
     else if (m.t === 'clsend' && isStaff(ws)) { if (AC && AC.status === 'running') clsFinish(AC); }
     else if (m.t === 'clscancel' && isStaff(ws)) clsCancel();
     else if (m.t === 'resethist' && admins.has(ws)) { history = []; RECENT = []; save('history', 'recent'); pushAdmin(); }
-    else if (m.t === 'resetall' && admins.has(ws) && m.confirm === 'XOA') { ST = {}; LB = []; history = []; CS = []; RECENT = []; save('students', 'lb', 'history', 'sessions', 'recent'); pushAdmin(); }
-    else if (m.t === 'backup' && admins.has(ws)) send(ws, { t: 'backup', data: { config: cfg, students: ST, lb: LB, history, sessions: CS, recent: RECENT } });
+    else if (m.t === 'resetall' && admins.has(ws) && m.confirm === 'XOA') { ST = {}; LB = []; history = []; CS = []; RECENT = []; CHEATLOG = []; save('students', 'lb', 'history', 'sessions', 'recent', 'cheatlog'); pushAdmin(); }
+    else if (m.t === 'backup' && admins.has(ws)) send(ws, { t: 'backup', data: { config: cfg, students: ST, lb: LB, history, sessions: CS, recent: RECENT, cheatlog: CHEATLOG } });
     else if (m.t === 'restore' && admins.has(ws)) {
       const d = m.data;
       if (d && d.students && typeof d.students === 'object' && Array.isArray(d.lb) && Array.isArray(d.history)) {
-        ST = d.students; LB = d.lb; history = d.history; if (Array.isArray(d.sessions)) CS = d.sessions; if (Array.isArray(d.recent)) RECENT = d.recent; if (d.config && Array.isArray(d.config.texts)) cfg = Object.assign({ mode: 'preset', cpm: 400, classDur: 5 }, d.config);
-        save('config', 'students', 'lb', 'history', 'sessions', 'recent'); pushAdmin();
+        ST = d.students; LB = d.lb; history = d.history; if (Array.isArray(d.sessions)) CS = d.sessions; if (Array.isArray(d.recent)) RECENT = d.recent; if (Array.isArray(d.cheatlog)) CHEATLOG = d.cheatlog; if (d.config && Array.isArray(d.config.texts)) cfg = Object.assign({ mode: 'preset', cpm: 400, classDur: 5 }, d.config);
+        save('config', 'students', 'lb', 'history', 'sessions', 'recent', 'cheatlog'); pushAdmin();
       }
     }
     else if (m.t === 'typed') {
@@ -499,7 +532,7 @@ wss.on('connection', ws => {
       const v = String(m.text || '').normalize('NFC').replace(/\s+/g, ' ').replace(/^ /, '').slice(0, r.text.length + 40);
       if (v.length - p.typed.length > 12) return send(ws, { t: 'resync', text: p.typed }); // chặn dán văn bản
       p.typed = v;
-      if (checkCheat(p, m, Date.now())) { send(ws, { t: 'cheat', reason: p.cheat }); broadcast(r); if (r.players.every(x => x.doneAt)) finish(r); return; }
+      if (checkCheat(p, m, Date.now(), r.solo ? 'Thi một mình' : 'Thi đối kháng')) { send(ws, { t: 'cheat', reason: p.cheat }); broadcast(r); if (r.players.every(x => x.doneAt)) finish(r); return; }
       const tw = v.split(' '); // hoàn thành khi từ cuối cùng được gõ đúng hoàn toàn
       if (tw.length === r.words.length && tw[tw.length - 1] === r.words[r.words.length - 1]) p.doneAt = Date.now();
       broadcast(r); if (r.players.every(x => x.doneAt)) finish(r);

@@ -71,3 +71,8 @@ Cuối trang chủ hiển thị 10 lượt thi gần nhất, mới nhất ở tr
 
 ## Top 100 sinh viên (tất cả các lớp) và xuất Excel
 Tab “👥 Theo lớp” của bảng xếp hạng hiển thị **Top 100** sinh viên (điểm cao nhất của mỗi sinh viên qua các buổi thi theo lớp). Giám thị 1: “Quản lý dữ liệu → ⬇ Xuất Excel Top 100 (theo lớp)” tải file `.xlsx` gồm Hạng, Họ và tên, MSSV, Lớp, Điểm, WPM, Chính xác (%). File được tạo ngay trên trình duyệt, không cần cài thêm gì.
+
+## Sinh viên từng bị nghi gian lận nhưng giờ không được ghi điểm?
+Có hai nguyên nhân thường gặp:
+1. **Điểm gian lận cũ vẫn nằm trong bảng xếp hạng.** Bảng chỉ giữ *điểm cao nhất* của mỗi MSSV theo từng mốc thời gian; một điểm rất cao do gian lận (lúc chưa bị phát hiện) sẽ chặn mọi điểm thật thấp hơn. Cách xử lý (giám thị 1): “Quản lý dữ liệu → Bảng xếp hạng (quản lý từng dòng)” (dòng có WPM ≥ 140 được tô đỏ), hoặc “Nhật ký nghi gian lận”, hoặc bảng “Sinh viên đã đăng ký”: bấm **“Hủy điểm SV”**. Thao tác này xóa điểm của MSSV khỏi mọi bảng xếp hạng, kết quả thi theo lớp (được tính lại điểm trung bình/xếp hạng) và mục “Mới thi gần đây”, giữ nguyên danh tính; từ đó điểm mới được ghi nhận lại. Có thêm nút “Hủy điểm bất thường” (mọi kết quả có WPM từ mức bạn chọn trở lên).
+2. **Trình duyệt vẫn còn extension can thiệp ô gõ.** Mỗi lượt bị hủy điểm đều ghi vào “Nhật ký nghi gian lận” kèm lý do và số liệu (số phím thật, nhịp gõ, ký tự/giây…). Chữ do extension chèn vào ô gõ giờ bị hoàn tác ngay; hãy yêu cầu sinh viên tắt/gỡ extension hoặc thi bằng cửa sổ Khách/Ẩn danh.

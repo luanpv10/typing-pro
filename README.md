@@ -62,3 +62,6 @@ Máy chủ là nơi quyết định, trình duyệt gửi kèm số liệu bàn 
 Thi một mình: mặc định 2 phút. Thi đối kháng và thi theo lớp: mặc định 5 phút; cấu hình cũ lưu trước bản này được đặt lại về 5 phút một lần khi khởi động.
 
 Bảng xếp hạng có thêm tab **“🏅 Thi nhiều nhất”** (đứng đầu, cạnh “1 phút”): top 30 sinh viên theo số lượt thi, đồng hạng thì cùng thứ hạng.
+
+## Danh sách người đang online (giám thị 1)
+Khu giám thị 1 → “👥 Người đang online → Xem danh sách”: bảng cập nhật mỗi 3 giây gồm họ tên, MSSV, đang làm gì (thi đối kháng đấu với ai, thi một mình mấy phút, thi theo lớp nào) hoặc đang ở trang nào (trang chủ, xem bảng xếp hạng…), trạng thái (đang chờ, đang đếm ngược, đang thi, đã xong), tiến độ và WPM, giờ vào, cùng cờ cảnh báo/gian lận. Có ô tìm theo tên/MSSV và lọc theo nhóm. Người chưa nhập MSSV (mới mở trang) hiện là “Khách”. Chỉ giám thị 1 xem được; máy chủ chỉ gửi dữ liệu này khi giám thị đang mở màn hình đó.

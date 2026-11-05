@@ -224,7 +224,7 @@ function identify(ws, m) {
   if (cur && cur !== ws && cur.readyState === 1) return send(ws, { t: 'joinerr', msg: 'MSSV này đang được sử dụng ở một thiết bị hoặc tab khác.' });
   leaveRoom(ws, true);
   if (!st) { ST[mssv] = { name: nm, at: Date.now() }; saveST(); }
-  const name = ST[mssv].name; active.set(mssv, ws); ws.mssv = mssv;
+  const name = ST[mssv].name; active.set(mssv, ws); ws.mssv = mssv; ws.who = { mssv, name };
   return { mssv, name };
 }
 function join(ws, m) {
@@ -279,6 +279,41 @@ function lbStats() {
   const people = Object.entries(ST).filter(([k, v]) => max > 0 && (v.plays || 0) === max).map(([k, v]) => ({ mssv: k, name: v.name }));
   return { students: part.size, classes: new Set(CS.map(c => c.code)).size, most: { plays: max, people: people.slice(0, 5), more: Math.max(0, people.length - 5) } };
 }
+// ===== Danh sách người đang online (chỉ giám thị 1): ai, đang làm gì, ở trang nào =====
+const PAGES = { home: 'Trang chủ', lb: 'Đang xem bảng xếp hạng', admin: 'Khu quản trị', cls: 'Màn hình điều khiển lớp thi', spec: 'Theo dõi một phòng thi', online: 'Xem danh sách online', wait: 'Phòng chờ', game: 'Màn hình thi' };
+const presSubs = new Set(); let presTimer = null;
+function presence() {
+  const now = Date.now(), out = [], order = { exam: 0, wait: 1, done: 2, browse: 3, staff: 4 };
+  wss.clients.forEach(ws => {
+    if (ws.readyState !== 1) return;
+    const role = admins.has(ws) ? 1 : procs.has(ws) ? 2 : 0;
+    const row = { name: ws.who ? ws.who.name : (role ? 'Giám thị ' + role : 'Khách (chưa nhập MSSV)'), mssv: ws.who ? ws.who.mssv : '', since: ws.since || now,
+      act: PAGES[ws.page] || 'Trang chủ', st: '', grp: 'browse', prog: -1, wpm: 0, warn: '', cheat: '' };
+    const c = ws.cls, r = ws.room;
+    const fill = (p, rm) => { if (p && p.typed !== undefined) { const t = stat(p, rm, now); row.prog = Math.round(100 * t.correct / (t.len || 1)); row.wpm = t.wpm; row.warn = p.warn || ''; row.cheat = p.cheat || ''; } };
+    if (c) {
+      const p = c.players.find(x => x.ws === ws);
+      row.act = 'Thi theo lớp ' + c.code + ' (' + c.dur + ' phút)';
+      if (c.status === 'open') { row.st = 'Đang ở phòng chờ'; row.grp = 'wait'; }
+      else { row.grp = 'exam'; row.st = c.status === 'countdown' ? 'Đang đếm ngược' : (p && p.done ? 'Đã xong bài' : (p && p.disc ? 'Mất kết nối' : 'Đang thi')); if (p && p.doneAt) row.st = p.cheat ? 'Bị hủy điểm' : 'Đã xong bài'; fill(p, c); }
+    } else if (r) {
+      const p = r.players.find(x => x.ws === ws), opp = r.players.find(x => x !== p);
+      row.act = r.solo ? 'Thi một mình (' + r.dur + ' phút)' : 'Thi đối kháng (' + r.dur + ' phút)' + (opp ? ' — đấu với ' + opp.name : '');
+      if (r.status === 'waiting') { row.st = 'Đang chờ đối thủ'; row.grp = 'wait'; }
+      else if (r.status === 'countdown') { row.st = 'Đang đếm ngược'; row.grp = 'exam'; }
+      else if (r.status === 'running') { row.st = p && p.doneAt ? (p.cheat ? 'Bị hủy điểm' : 'Đã xong bài') : 'Đang thi'; row.grp = 'exam'; fill(p, r); }
+      else { row.st = 'Đã thi xong, xem kết quả'; row.grp = 'done'; }
+    } else if (ws.watching) {
+      row.act = 'Theo dõi phòng: ' + ws.watching.players.map(x => x.name).join(' vs ');
+    }
+    if (role) { row.grp = 'staff'; row.act = 'Giám thị ' + role + ' — ' + row.act; }
+    row.o = order[row.grp];
+    out.push(row);
+  });
+  return out.sort((a, b) => a.o - b.o || a.name.localeCompare(b.name, 'vi')).map(({ o, ...x }) => x);
+}
+function sendPresence(ws) { send(ws, { t: 'presence', list: presence() }); }
+function startPresence() { if (!presTimer) presTimer = setInterval(() => { if (!presSubs.size) { clearInterval(presTimer); presTimer = null; return; } const m = { t: 'presence', list: presence() }; presSubs.forEach(w => send(w, m)); }, 3000); }
 function classTop() {
   const best = new Map();
   CS.forEach(x => x.results.forEach(r => {
@@ -392,6 +427,7 @@ function clsTyped(ws, m) {
 }
 
 wss.on('connection', ws => {
+  ws.since = Date.now();
   send(ws, { t: 'hello', duration: cfg.duration, online: onlineCount() }); pushOnline();
   ws.on('message', raw => {
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
@@ -403,7 +439,9 @@ wss.on('connection', ws => {
     }
     else if (m.t === 'joinclass') joinClass(ws, m);
     else if (m.t === 'resume') { const r = verifyToken(m.token); if (r) grant(ws, r); else send(ws, { t: 'resumefail' }); }
-    else if (m.t === 'stafflogout') { admins.delete(ws); procs.delete(ws); unwatch(ws); }
+    else if (m.t === 'stafflogout') { admins.delete(ws); procs.delete(ws); presSubs.delete(ws); unwatch(ws); }
+    else if (m.t === 'page') { if (PAGES[m.v]) ws.page = m.v; }
+    else if (m.t === 'presub' && admins.has(ws)) { if (m.on) { presSubs.add(ws); startPresence(); sendPresence(ws); } else presSubs.delete(ws); }
     else if (m.t === 'watch' && admins.has(ws)) {
       unwatch(ws); const r = rooms.get(+m.id);
       if (!r) return send(ws, { t: 'spec', gone: true });
@@ -466,6 +504,6 @@ wss.on('connection', ws => {
       pushAdmin();
     }
   });
-  ws.on('close', () => { pushOnline(); unwatch(ws); admins.delete(ws); procs.delete(ws); leaveRoom(ws); });
+  ws.on('close', () => { pushOnline(); presSubs.delete(ws); unwatch(ws); admins.delete(ws); procs.delete(ws); leaveRoom(ws); });
 });
 loadAll().then(() => server.listen(PORT, () => console.log('Typing Pro chạy tại http://localhost:' + PORT)));

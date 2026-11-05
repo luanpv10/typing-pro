@@ -65,3 +65,9 @@ Bảng xếp hạng có thêm tab **“🏅 Thi nhiều nhất”** (đứng đ�
 
 ## Danh sách người đang online (giám thị 1)
 Khu giám thị 1 → “👥 Người đang online → Xem danh sách”: bảng cập nhật mỗi 3 giây gồm họ tên, MSSV, đang làm gì (thi đối kháng đấu với ai, thi một mình mấy phút, thi theo lớp nào) hoặc đang ở trang nào (trang chủ, xem bảng xếp hạng…), trạng thái (đang chờ, đang đếm ngược, đang thi, đã xong), tiến độ và WPM, giờ vào, cùng cờ cảnh báo/gian lận. Có ô tìm theo tên/MSSV và lọc theo nhóm. Người chưa nhập MSSV (mới mở trang) hiện là “Khách”. Chỉ giám thị 1 xem được; máy chủ chỉ gửi dữ liệu này khi giám thị đang mở màn hình đó.
+
+## Lịch sử thi gần đây (trang chủ)
+Cuối trang chủ hiển thị 10 lượt thi gần nhất, mới nhất ở trên: các cặp đối kháng (ai đấu với ai, điểm, người thắng), sinh viên thi một mình, và các buổi thi theo lớp (sĩ số, điểm trung bình, người đứng đầu). Danh sách tự cập nhật (gom tối đa 2 giây một lần). Dữ liệu được lưu cùng các dữ liệu khác (tối đa 60 lượt gần nhất); giám thị 1 xóa bằng “Xóa lịch sử trận đấu” hoặc “Xóa toàn bộ dữ liệu”.
+
+## Top 100 sinh viên (tất cả các lớp) và xuất Excel
+Tab “👥 Theo lớp” của bảng xếp hạng hiển thị **Top 100** sinh viên (điểm cao nhất của mỗi sinh viên qua các buổi thi theo lớp). Giám thị 1: “Quản lý dữ liệu → ⬇ Xuất Excel Top 100 (theo lớp)” tải file `.xlsx` gồm Hạng, Họ và tên, MSSV, Lớp, Điểm, WPM, Chính xác (%). File được tạo ngay trên trình duyệt, không cần cài thêm gì.

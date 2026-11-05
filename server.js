@@ -29,7 +29,7 @@ async function kvSet(k, v) {
   fs.writeFileSync(path.join(__dirname, k + '.json'), JSON.stringify(v));
 }
 const dirty = new Set(); let flushTimer = null;
-const valOf = k => ({ config: cfg, students: ST, lb: LB, history, sessions: CS }[k]);
+const valOf = k => ({ config: cfg, students: ST, lb: LB, history, sessions: CS, recent: RECENT }[k]);
 function save(...keys) { keys.forEach(k => dirty.add(k)); if (!flushTimer) flushTimer = setTimeout(flush, 1500); }
 async function flush() {
   clearTimeout(flushTimer); flushTimer = null;
@@ -38,8 +38,8 @@ async function flush() {
 }
 async function loadAll() {
   try {
-    const [c, st, l, h, cs] = await Promise.all([kvGet('config'), kvGet('students'), kvGet('lb'), kvGet('history'), kvGet('sessions')]);
-    if (c && c.texts) cfg = Object.assign({ mode: 'preset', cpm: 400, classDur: 5 }, c); if (st) ST = st; if (l) LB = l; if (h) history = h; if (Array.isArray(cs)) CS = cs;
+    const [c, st, l, h, cs, rc] = await Promise.all([kvGet('config'), kvGet('students'), kvGet('lb'), kvGet('history'), kvGet('sessions'), kvGet('recent')]);
+    if (c && c.texts) cfg = Object.assign({ mode: 'preset', cpm: 400, classDur: 5 }, c); if (st) ST = st; if (l) LB = l; if (h) history = h; if (Array.isArray(cs)) CS = cs; if (Array.isArray(rc)) RECENT = rc;
     if (c && c.texts && !c.v) { cfg.duration = 5; cfg.classDur = 5; cfg.v = 2; save('config'); } // cấu hình bản cũ: đặt lại mặc định 5 phút một lần
     backfillPlays();
     console.log(DB ? 'Lưu trữ: Upstash Redis (vĩnh viễn). Sinh viên: ' + Object.keys(ST).length : 'CẢNH BÁO: chưa cấu hình Upstash – dữ liệu lưu file tạm, sẽ mất khi Render khởi động lại.');
@@ -54,6 +54,7 @@ let cfg = { v: 2, duration: 5, classDur: 5, mode: 'preset', cpm: 400, texts: [
 
 // Danh bạ sinh viên: MSSV (duy nhất) -> họ tên
 let ST = {};
+let RECENT = []; // nhật ký các lượt thi gần đây (hiển thị ở trang chủ)
 let CS = []; // các buổi thi theo lớp đã kết thúc (lưu vĩnh viễn)
 const saveST = () => save('students');
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -88,6 +89,12 @@ const staffSend = msg => { admins.forEach(w => send(w, msg)); procs.forEach(w =>
 let history = [];
 let seq = 0;
 const prep = t => String(t).normalize('NFC').replace(/\s+/g, ' ').trim();
+let recentT = null;
+const recentList = () => RECENT.slice(-10).reverse();
+function logRecent(e) {
+  RECENT.push(e); if (RECENT.length > 60) RECENT.shift(); save('recent');
+  if (!recentT) recentT = setTimeout(() => { recentT = null; const m = { t: 'recent', list: recentList() }; wss.clients.forEach(c => send(c, m)); }, 2000);
+}
 let onlineT = null;
 const onlineCount = () => { let n = 0; wss.clients.forEach(c => { if (c.readyState === 1) n++; }); return n; };
 function pushOnline() { // gom thông báo, tối đa 1 lần / 1,5 giây
@@ -193,6 +200,8 @@ function finish(r) {
     if (r.players[0].left && !r.players[1].left) w = 1;
     if (r.players[1].left && !r.players[0].left) w = 0;
   }
+  logRecent({ at: now, kind: r.solo ? 'solo' : 'duel', dur: r.dur, winner: w,
+    players: s.map((x, i) => ({ name: x.name, mssv: x.mssv, score: x.score, wpm: x.wpm, acc: x.acc, flag: r.players[i].cheat ? 'cheat' : r.players[i].left ? 'left' : r.players[i].early ? 'early' : '' })) });
   r.result = { winner: w, early: !!(r.solo && r.players[0] && r.players[0].early) };
   s.forEach((x, i) => { if (!r.players[i].left && !r.players[i].early) recordLB(x, r.dur); }); saveLB(); // cả thi đối kháng và thi một mình; bỏ cuộc giữa chừng thì không tính
   if (!r.solo) { history.push({ at: Date.now(), players: s, winner: w }); if (history.length > 3000) history.shift(); save('history'); }
@@ -320,7 +329,7 @@ function classTop() {
     if (r.left || r.cheat || !r.score) return; const b = best.get(r.mssv);
     if (!b || r.score > b.score || (r.score === b.score && r.acc > b.acc)) best.set(r.mssv, { mssv: r.mssv, name: r.name, code: x.code, score: r.score, wpm: r.wpm, acc: r.acc });
   }));
-  return [...best.values()].sort((a, b) => b.score - a.score || b.acc - a.acc).slice(0, 30);
+  return [...best.values()].sort((a, b) => b.score - a.score || b.acc - a.acc).slice(0, 100);
 }
 const classSummaries = () => CS.slice().reverse().slice(0, 100).map(({ results, ...r }) => r);
 function grant(ws, role) {
@@ -378,6 +387,8 @@ function clsFinish(c) {
   const sess = { id: Date.now(), code: c.code, dur: c.dur, at: c.startAt || now, count: ok.length, finished: ok.filter(r => r.done).length,
     avgScore: avg('score'), avgWpm: avg('wpm'), avgAcc: avg('acc'), maxScore: ok.length ? Math.max(...ok.map(r => r.score)) : 0, results };
   CS.push(sess); if (CS.length > 300) CS.shift(); save('sessions');
+  const best = results.find(r => !r.left && !r.cheat && r.score > 0);
+  logRecent({ at: now, kind: 'class', code: c.code, dur: c.dur, count: ok.length, avgScore: sess.avgScore, top: best ? { name: best.name, mssv: best.mssv, score: best.score } : null });
   sendClsPlayers(c, false); sendClsAdmin(c, { sid: sess.id });
   c.players.forEach(p => { releaseId(p.ws); if (p.ws) p.ws.cls = null; });
   AC = null; pushAdmin();
@@ -428,7 +439,7 @@ function clsTyped(ws, m) {
 
 wss.on('connection', ws => {
   ws.since = Date.now();
-  send(ws, { t: 'hello', duration: cfg.duration, online: onlineCount() }); pushOnline();
+  send(ws, { t: 'hello', duration: cfg.duration, online: onlineCount(), recent: recentList() }); pushOnline();
   ws.on('message', raw => {
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
     if (m.t === 'join') join(ws, m);
@@ -471,14 +482,14 @@ wss.on('connection', ws => {
     else if (m.t === 'clsstart' && isStaff(ws)) { if (AC && AC.status === 'open' && AC.players.length) clsStart(AC); else send(ws, { t: 'clserr', msg: 'Chưa có sinh viên nào trong lớp.' }); }
     else if (m.t === 'clsend' && isStaff(ws)) { if (AC && AC.status === 'running') clsFinish(AC); }
     else if (m.t === 'clscancel' && isStaff(ws)) clsCancel();
-    else if (m.t === 'resethist' && admins.has(ws)) { history = []; save('history'); pushAdmin(); }
-    else if (m.t === 'resetall' && admins.has(ws) && m.confirm === 'XOA') { ST = {}; LB = []; history = []; CS = []; save('students', 'lb', 'history', 'sessions'); pushAdmin(); }
-    else if (m.t === 'backup' && admins.has(ws)) send(ws, { t: 'backup', data: { config: cfg, students: ST, lb: LB, history, sessions: CS } });
+    else if (m.t === 'resethist' && admins.has(ws)) { history = []; RECENT = []; save('history', 'recent'); pushAdmin(); }
+    else if (m.t === 'resetall' && admins.has(ws) && m.confirm === 'XOA') { ST = {}; LB = []; history = []; CS = []; RECENT = []; save('students', 'lb', 'history', 'sessions', 'recent'); pushAdmin(); }
+    else if (m.t === 'backup' && admins.has(ws)) send(ws, { t: 'backup', data: { config: cfg, students: ST, lb: LB, history, sessions: CS, recent: RECENT } });
     else if (m.t === 'restore' && admins.has(ws)) {
       const d = m.data;
       if (d && d.students && typeof d.students === 'object' && Array.isArray(d.lb) && Array.isArray(d.history)) {
-        ST = d.students; LB = d.lb; history = d.history; if (Array.isArray(d.sessions)) CS = d.sessions; if (d.config && Array.isArray(d.config.texts)) cfg = Object.assign({ mode: 'preset', cpm: 400, classDur: 5 }, d.config);
-        save('config', 'students', 'lb', 'history', 'sessions'); pushAdmin();
+        ST = d.students; LB = d.lb; history = d.history; if (Array.isArray(d.sessions)) CS = d.sessions; if (Array.isArray(d.recent)) RECENT = d.recent; if (d.config && Array.isArray(d.config.texts)) cfg = Object.assign({ mode: 'preset', cpm: 400, classDur: 5 }, d.config);
+        save('config', 'students', 'lb', 'history', 'sessions', 'recent'); pushAdmin();
       }
     }
     else if (m.t === 'typed') {

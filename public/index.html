@@ -25,7 +25,7 @@ button.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}
 .timer{font-size:44px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums;margin:8px 0}
 .txt{font:24px/1.9 "Segoe UI","Be Vietnam Pro",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:18px;margin-top:12px;user-select:none;height:260px;overflow-y:auto;position:relative}
 .txt span{padding:1px 3px;border-radius:4px}.txt .ok{color:var(--ok)}.txt .bad{background:var(--badbg);color:var(--bad);text-decoration:underline wavy}.txt .cur{background:var(--cur);box-shadow:0 0 0 2px var(--ac)}
-textarea.in{width:100%;height:90px;margin-top:12px;padding:12px;border-radius:12px;border:2px solid var(--ac);background:var(--card);color:var(--tx);font:20px/1.5 "Segoe UI",Roboto,Arial,sans-serif;resize:none}
+textarea.in{width:100%;height:112px;margin-top:12px;padding:12px;border-radius:12px;border:2px solid var(--ac);background:var(--card);color:var(--tx);font:22px/1.5 "Segoe UI",Roboto,Arial,sans-serif;resize:none}
 .win{font-size:28px;font-weight:800;text-align:center;margin:6px 0 14px}
 table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:center;border-bottom:1px solid var(--bd)}
 .tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;background:var(--bd)}
@@ -41,10 +41,12 @@ a.brand{text-decoration:none;color:inherit}
 .playing .wrap{height:var(--vh,100dvh);display:flex;flex-direction:column;padding-top:8px;padding-bottom:8px}
 .playing #app{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 .playing .txt{flex:1 1 0;height:auto;min-height:60px;margin-top:8px}
+.playing .wrap{max-width:1120px}
 .playing .timer{font-size:30px;margin:0;flex:none}.playing .timer2{font-size:30px;margin:6px 0 0;flex:none}
-.playing textarea.in{height:72px;margin-top:8px;flex:none}
+.playing textarea.in{height:112px;margin-top:8px;flex:none;font-size:22px}
 .playing .pl{flex:none}.playing .p{padding:8px 12px}.playing .p .bar{margin:4px 0}
 .playing .brand img{height:38px}
+@media(max-height:760px),(max-width:640px){.playing textarea.in{height:84px;font-size:20px}}
 .olwrap{position:sticky;top:0;z-index:30;text-align:center;padding:0 0 6px;pointer-events:none}
 .pill{display:inline-block;pointer-events:auto;background:var(--card);border:1px solid var(--bd);border-radius:99px;padding:2px 12px;font-size:13px;color:var(--mu)}
 .pill b{color:var(--tx)}
@@ -59,7 +61,7 @@ button.b2{background:#0a7cd6;color:#fff}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get(k){try{return localStorage.getItem(k)||''}catch(e){return''}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
-let wantXlsx=false,RC=null,PRES=null,olq='',olg='',lastPg='',TL={},CHEAT='',wantAdmin=false,lbFrom='home',CA=null,CR=null,clsSel='',wantCls=false,clsCode='',ctm=null,cval='',SP=null,celId=null,celRAF=0,LBD=null,lbDur=2,ws,S=null,view='home',name=LS.get('tp_name'),mssv=LS.get('tp_mssv'),dur=2,err='',A=null,ta=null,focused=false;
+let OKV='',wantXlsx=false,RC=null,PRES=null,olq='',olg='',lastPg='',TL={},CHEAT='',wantAdmin=false,lbFrom='home',CA=null,CR=null,clsSel='',wantCls=false,clsCode='',ctm=null,cval='',SP=null,celId=null,celRAF=0,LBD=null,lbDur=2,ws,S=null,view='home',name=LS.get('tp_name'),mssv=LS.get('tp_mssv'),dur=2,err='',A=null,ta=null,focused=false;
 
 function setOnl(n){const e=$('#onl');if(e)e.textContent=n==null?'–':n}
 function connect(){
@@ -80,7 +82,8 @@ function on(m){
   else if(m.t==='clsclosed'){err=m.reason==='timeout'?'Lớp thi đã bị hủy vì quá 10 phút chưa bắt đầu.':'Giám thị đã hủy lớp thi.';reset()}
   else if(m.t==='joinerr'){err=m.msg;render()}
   else if(m.t==='lb'){LBD=m.data;LBD.classes=m.classes;LBD.classTop=m.classTop;LBD.stats=m.stats;LBD.mostPlays=m.mostPlays;if(wantXlsx){wantXlsx=false;downloadTop100(LBD.classTop||[])}if(view==='lb')render()}
-  else if(m.t==='resync'){if(ta)ta.value=m.text}
+  else if(m.t==='resync'){if(ta){ta.value=m.text;OKV=m.text}}
+  else if(m.t==='notice')alert(m.msg)
   else if(m.t==='aborted'){err='Đối thủ đã thoát trước khi bắt đầu.';reset()}
   else if(m.t==='adminfail'){wantAdmin=false;alert('Sai mật khẩu giám thị')}
   else if(m.t==='online')setOnl(m.n)
@@ -115,6 +118,15 @@ function joinClass(){
 function adminLogin(){const p=prompt('Mật khẩu giám thị:');if(p){wantAdmin=true;tx({t:'admin',pass:p})}}
 function ck(n){const m=(document.cookie||'').match(new RegExp('(?:^|; )'+n+'=([^;]*)'));return m?decodeURIComponent(m[1]):''}
 function setCk(n,v,age){document.cookie=n+'='+encodeURIComponent(v)+'; Max-Age='+age+'; Path=/; SameSite=Strict'+(location.protocol==='https:'?'; Secure':'')}
+function cheatCard(){
+  const L=A.cheatlog||[],tm=t=>new Date(t).toLocaleString('vi-VN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
+  return `<div class="card"><div class="row" style="justify-content:space-between"><div><h2 style="margin:0">🚩 Nhật ký nghi gian lận</h2><span class="mu">Mỗi lượt thi bị hệ thống hủy điểm đều được ghi lại kèm lý do và số liệu để bạn kiểm tra.</span></div><button class="g" onclick="if(confirm('Xóa nhật ký?'))tx({t:'clearcheatlog'})">Xóa nhật ký</button></div>
+  ${L.length?`<div style="max-height:300px;overflow:auto;margin-top:10px"><table><tr><th>Giờ</th><th style="text-align:left">Sinh viên</th><th style="text-align:left">Hình thức</th><th style="text-align:left">Lý do</th><th style="text-align:left">Số liệu</th><th></th></tr>${L.map(x=>`<tr><td>${tm(x.at)}</td><td style="text-align:left">${esc(x.name)}<br><span class="mu">${esc(x.mssv)}</span></td><td style="text-align:left">${esc(x.mode)}</td><td style="text-align:left">${esc(x.reason)}</td><td class="mu" style="text-align:left;font-size:12px">${x.len} ký tự · ${x.cps} ký tự/giây${x.tl?` · phím thật ${x.tl.kd} · độ lệch nhịp ${x.tl.sd} ms · giả lập ${x.tl.sy} · rời tab ${x.tl.bl}`:''}</td><td><button class="g" onclick="voidStu('${esc(x.mssv)}')">Hủy điểm SV</button></td></tr>`).join('')}</table></div>`:'<p class="mu" style="margin-top:10px">Chưa có lượt nào bị đánh dấu.</p>'}
+  <div class="row" style="margin-top:12px;align-items:flex-end"><div><label>Hủy mọi kết quả có WPM từ</label><input id="vw" type="number" min="80" max="400" value="150" style="width:110px"></div><button class="g" onclick="voidAbn()">Hủy điểm bất thường</button></div>
+  <p class="mu" style="margin:8px 0 0">Bảng xếp hạng chỉ giữ <b>điểm cao nhất</b> của mỗi sinh viên. Nếu một điểm gian lận cũ (chưa bị phát hiện) vẫn nằm trong bảng, các điểm thật thấp hơn sẽ không được ghi đè. Khi đó hãy bấm “Hủy điểm” của sinh viên đó để điểm thật được ghi nhận lại.</p></div>`;
+}
+function voidStu(k){if(confirm('Hủy toàn bộ điểm của '+k+' (bảng xếp hạng, kết quả thi theo lớp, mục “Mới thi gần đây”)?\nDanh tính MSSV vẫn giữ. Không thể hoàn tác.'))tx({t:'voidstudent',mssv:k})}
+function voidAbn(){const w=+$('#vw').value||150;if(confirm('Hủy mọi kết quả có WPM từ '+w+' trở lên? (người thật rất hiếm khi vượt mức này)\nKhông thể hoàn tác.'))tx({t:'voidabnormal',wpm:w})}
 function openOnline(){view='online';PRES=null;tx({t:'presub',on:true});render()}
 function closeOnline(){tx({t:'presub',on:false});view='admin';render()}
 function onlineView(a){
@@ -226,30 +238,31 @@ function render(){
 function build(a){
   a.innerHTML=`<div id="gtop"></div><div id="tm" class="timer"></div><div class="pl" id="cards"></div><div id="clsb"></div><div id="txt" class="txt"></div>
   <textarea id="ta" class="in" disabled autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Bắt đầu gõ khi đếm ngược kết thúc…"></textarea><div id="tm2" class="timer2"></div><div id="res"></div>`;
-  ta=$('#ta');let comp=false;CHEAT='';TL={kd:0,n:0,mean:0,m2:0,sy:0,bl:0,last:0,lb:0};
+  ta=$('#ta');let comp=false;CHEAT='';OKV='';TL={kd:0,n:0,mean:0,m2:0,sy:0,bl:0,last:0,lb:0};
   if(window.scrollTo)window.scrollTo(0,0);
   if(window.addEventListener&&!window._fit){window._fit=1;window.addEventListener('resize',fitTxt);if(window.visualViewport)visualViewport.addEventListener('resize',fitTxt);
     const bump=()=>{const t=performance.now();if(S&&S.status==='running'&&t-TL.lb>800){TL.bl++;TL.lb=t}};
     window.addEventListener('blur',bump);document.addEventListener('visibilitychange',()=>{if(document.hidden)bump()})}
   // số liệu bàn phím thật gửi kèm để máy chủ kiểm tra gian lận (extension tự gõ không tạo được phím thật)
   const tlData=()=>({kd:TL.kd,sd:TL.n>5?Math.round(Math.sqrt(TL.m2/(TL.n-1))*10)/10:-1,sy:TL.sy,bl:TL.bl,wd:(typeof navigator!=='undefined'&&navigator.webdriver)?1:0});
+  const inject=()=>{TL.sy++;ta.value=OKV}; // chữ xuất hiện không từ bàn phím thật: hoàn tác ngay
   const push=()=>{
     if(S&&S.status==='running'&&!CHEAT){
       const n=ta.value.replace(/\n/g,' ').replace(/^\s+/,'').replace(/\s{2,}/g,' ');
-      if(n!==ta.value)ta.value=n;
+      if(n!==ta.value)ta.value=n;OKV=n;
       if(S.cls){cval=n;if(!ctm)ctm=setTimeout(()=>{ctm=null;tx({t:'typed',text:cval,tl:tlData()})},200)}else tx({t:'typed',text:n,tl:tlData()});paint()
-    }else ta.value=''
+    }else{ta.value='';OKV=''}
   };
   ta.addEventListener('keydown',e=>{
     if(e.key==='Enter')e.preventDefault();
-    if(!e.isTrusted){TL.sy++;return}                 // phím do script/extension tạo ra
+    if(!e.isTrusted)return;                          // phím giả không làm đổi nội dung ô gõ nên không tính
     const now=performance.now();TL.kd++;
     if(!e.repeat&&TL.last){const d=now-TL.last;if(d<1000){TL.n++;const dl=d-TL.mean;TL.mean+=dl/TL.n;TL.m2+=dl*(d-TL.mean)}}
     TL.last=now;
   });
   ta.addEventListener('compositionstart',()=>comp=true);
-  ta.addEventListener('compositionend',e=>{if(!e.isTrusted){TL.sy++;return}comp=false;push()});
-  ta.addEventListener('input',e=>{if(!e.isTrusted){TL.sy++;return}if(!comp)push()});
+  ta.addEventListener('compositionend',e=>{if(!e.isTrusted){if(!comp&&ta.value!==OKV)inject();return}comp=false;push()});
+  ta.addEventListener('input',e=>{if(!e.isTrusted){if(!comp&&ta.value!==OKV)inject();return}if(!comp){if(ta.value.length-OKV.length>12){inject();return}push()}});
   ['paste','drop','copy','cut','contextmenu','dragstart'].forEach(ev=>ta.addEventListener(ev,x=>x.preventDefault()));
   ['copy','cut','contextmenu','dragstart','selectstart'].forEach(ev=>$('#txt').addEventListener(ev,x=>x.preventDefault()));
   setInterval(()=>{if(view==='game')update()},250);
@@ -293,7 +306,7 @@ function update(){
   const TT=st==='countdown'?'Chuẩn bị… '+Math.max(1,Math.ceil((S.toStart-el)/1000)):st==='running'?fmt(S.toEnd-el-300):'Hết giờ';
   {const w=st==='running'&&S.toEnd-el-300<=30000;['#tm','#tm2'].forEach(i=>{const x=$(i);x.textContent=TT;if(x.classList)x.classList.toggle('warn',w)})}
   $('#cards').innerHTML=S.players.map((p,i)=>card(p,i===me)).join('')+(S.cls?clsBoard():'');
-  const gt=(S.solo?'<div style="text-align:right">'+(st==='finished'?'<button onclick="leave()">← Về trang chủ</button>':'<button class="g" onclick="endSolo()">⏹ Kết thúc</button>')+'</div>':'')+((CHEAT||S.players[me].cheat)?`<div class="card" style="border-color:var(--bad);color:var(--bad);margin-top:8px">🚩 Hệ thống phát hiện hành vi gõ bất thường (${esc(CHEAT||S.players[me].cheat)}). Bài thi của bạn không được tính điểm.</div>`:'');
+  const gt=(S.solo?'<div style="text-align:right">'+(st==='finished'?'<button onclick="leave()">← Về trang chủ</button>':'<button class="g" onclick="endSolo()">⏹ Kết thúc</button>')+'</div>':'')+((CHEAT||S.players[me].cheat)?`<div class="card" style="border-color:var(--bad);color:var(--bad);margin-top:8px">🚩 Hệ thống phát hiện hành vi gõ bất thường (${esc(CHEAT||S.players[me].cheat)}). Bài thi của bạn không được tính điểm.<br><span style="font-size:14px">Hãy tắt mọi extension của trình duyệt (hoặc mở cửa sổ Khách/Ẩn danh), quay về trang chủ rồi thi lại. Nếu bạn không dùng extension, hãy báo giám thị.</span><div style="margin-top:8px"><button class="g" onclick="leave()">← Về trang chủ</button></div></div>`:'');
   const g=$('#gtop');if(g.dataset.h!==gt){g.dataset.h=gt;g.innerHTML=gt}
   fitTxt();
   const canType=st==='running'&&!S.players[me].done&&!CHEAT;
@@ -342,7 +355,7 @@ function setLB(d){lbDur=d;render()}
 function lbStatsHTML(){
   const s=LBD&&LBD.stats;if(!s)return '';
   const m=s.most,who=m.plays?m.people.map(p=>esc(p.name)+' <span class="mu">('+esc(p.mssv)+')</span>').join(', ')+(m.more?' và '+m.more+' người khác':''):'Chưa có';
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:12px 0"><div class="p"><div class="mu">👥 Tổng số sinh viên tham gia</div><b style="font-size:28px">${s.students}</b></div><div class="p"><div class="mu">🏫 Tổng số lớp</div><b style="font-size:28px">${s.classes}</b></div><div class="p"><div class="mu">🏅 Thi nhiều nhất</div><div style="font-weight:700">${who}</div>${m.plays?`<div><b style="font-size:28px">${m.plays}</b> <span class="mu">lần thi</span></div>`:''}</div></div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:12px 0"><div class="p"><div class="mu">👥 Tổng số sinh viên tham gia</div><b style="font-size:28px">${s.students}</b></div><div class="p"><div class="mu">🏫 Tổng số lớp</div><b style="font-size:28px">${s.classes}</b></div><div class="p"><div class="mu">🔢 Tổng số lần thi</div><b style="font-size:28px">${s.totalPlays||0}</b></div><div class="p"><div class="mu">🏅 Thi nhiều nhất</div><div style="font-weight:700">${who}</div>${m.plays?`<div><b style="font-size:28px">${m.plays}</b> <span class="mu">lần thi</span></div>`:''}</div></div>`;
 }
 function lbTabs(){return `<div class="tabs"><button class="${lbDur==='plays'?'':'g'}" onclick="setLB('plays')">🏅 Thi nhiều nhất</button>${[1,2,3,4,5].map(d=>`<button class="${d===lbDur?'':'g'}" onclick="setLB(${d})">${d} phút</button>`).join('')}<button class="${lbDur==='cls'?'':'g'}" onclick="setLB('cls')">👥 Theo lớp</button></div>`}
 function pickCls(v){clsSel=v;CR=null;if(v)tx({t:'clsres',id:+v});render()}
@@ -424,7 +437,7 @@ function updCls(){
   const b1=$('#b1');if(b1)b1.disabled=!CA.total;
 }
 let admDur=2;
-function admLbInner(){const L=(A.lb&&A.lb[admDur])||[];return `<div class="tabs">${[1,2,3,4,5].map(d=>`<button class="${d===admDur?'':'g'}" onclick="setAdmLb(${d})">${d} phút</button>`).join('')}</div>`+(L.length?`<div style="max-height:320px;overflow:auto"><table><tr><th>Hạng</th><th style="text-align:left">Thí sinh</th><th>MSSV</th><th>Điểm</th><th></th></tr>${L.map((e,i)=>`<tr><td>${i+1}</td><td style="text-align:left">${esc(e.name)}</td><td>${esc(e.mssv)}</td><td>${e.score}</td><td><button class="g" onclick="delLB('${esc(e.mssv)}',${admDur})">✕ Xóa</button></td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có dữ liệu.</p>')}
+function admLbInner(){const L=(A.lb&&A.lb[admDur])||[];return `<div class="tabs">${[1,2,3,4,5].map(d=>`<button class="${d===admDur?'':'g'}" onclick="setAdmLb(${d})">${d} phút</button>`).join('')}</div>`+(L.length?`<div style="max-height:320px;overflow:auto"><table><tr><th>Hạng</th><th style="text-align:left">Thí sinh</th><th>MSSV</th><th>Điểm</th><th>WPM</th><th>Chính xác</th><th></th></tr>${L.map((e,i)=>`<tr style="${e.wpm>=140?'background:var(--badbg)':''}"><td>${i+1}</td><td style="text-align:left">${esc(e.name)}${e.wpm>=140?' <span title="WPM rất cao, nên kiểm tra">⚠</span>':''}</td><td>${esc(e.mssv)}</td><td>${e.score}</td><td>${e.wpm}</td><td>${e.acc}%</td><td><button class="g" onclick="delLB('${esc(e.mssv)}',${admDur})">✕ Xóa dòng</button> <button class="g" onclick="voidStu('${esc(e.mssv)}')">Hủy điểm SV</button></td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có dữ liệu.</p>')}
 function setAdmLb(d){admDur=d;$('#alb').innerHTML=admLbInner()}
 function delLB(k,d){if(confirm('Xóa điểm của '+k+' ở mốc '+d+' phút?'))tx({t:'dellb',mssv:k,dur:d})}
 function resetLBd(){const d=+$('#rd').value;if(confirm('Xóa toàn bộ bảng xếp hạng mốc '+d+' phút? Không thể hoàn tác.'))tx({t:'resetlb',dur:d})}
@@ -442,12 +455,13 @@ function adminView(a){if(A.role===2)return procView(a);
   a.innerHTML=`${A.persist?'<div class="card" style="border-color:var(--ok)">✅ Dữ liệu được lưu vĩnh viễn trên cơ sở dữ liệu.</div>':'<div class="card" style="border-color:var(--bad)">⚠️ Chưa kết nối cơ sở dữ liệu: dữ liệu sẽ MẤT khi server khởi động lại. Xem README để cấu hình Upstash (miễn phí).</div>'}${cfgCard()}
   <div class="card"><h2 style="margin-top:0">Phòng đang hoạt động</h2>${A.live.length?`<table>${A.live.map(r=>`<tr><td>${r.names.map(esc).join(' vs ')||'…'}</td><td>${{waiting:'Đang chờ',countdown:'Chuẩn bị',running:'Đang thi'}[r.status]||r.status}</td><td><button class="g" onclick="watch(${r.id})">👁 Theo dõi</button></td></tr>`).join('')}</table>`:'<p class="mu">Không có phòng nào.</p>'}</div>
   <div class="card"><div class="row" style="justify-content:space-between"><div><h2 style="margin:0">👥 Người đang online</h2><span class="mu">Xem ai đang online, đang thi gì hoặc đang ở trang nào (cập nhật mỗi 3 giây).</span></div><button onclick="openOnline()">Xem danh sách</button></div></div>
+  ${cheatCard()}
   ${admClsCard()}
   <div class="card"><h2 style="margin-top:0">Quản lý dữ liệu</h2>
   <div class="row"><select id="rd" style="max-width:130px">${[1,2,3,4,5].map(m=>`<option value="${m}">${m} phút</option>`).join('')}</select><button class="g" onclick="resetLBd()">Xóa bảng xếp hạng mốc này</button><button class="g" onclick="resetLB()">Xóa toàn bộ bảng xếp hạng</button><button class="g" onclick="resetHist()">Xóa lịch sử trận đấu</button><button class="g" onclick="resetSess()">Xóa thống kê thi theo lớp</button></div>
   <div class="row" style="margin-top:10px"><button class="g" onclick="wantXlsx=true;tx({t:'lb'})">⬇ Xuất Excel Top 100 (theo lớp)</button><button class="g" onclick="tx({t:'backup'})">⬇ Tải bản sao lưu</button><label class="mu" style="margin:0">⬆ Khôi phục từ file: <input type="file" accept=".json" style="width:auto" onchange="restoreFile(this)"></label><button style="background:var(--bad)" onclick="resetAll()">⚠ Xóa toàn bộ dữ liệu</button></div></div>
   <div class="card"><h2 style="margin-top:0">Bảng xếp hạng (quản lý từng dòng)</h2><div id="alb">${admLbInner()}</div></div>
-  <div class="card"><h2 style="margin-top:0">Sinh viên đã đăng ký (${A.students.length})</h2>${A.students.length?`<div style="max-height:320px;overflow:auto"><table><tr><th>MSSV</th><th style="text-align:left">Họ tên</th><th></th></tr>${A.students.map(x=>`<tr><td>${esc(x.mssv)}</td><td style="text-align:left">${esc(x.name)}</td><td><button class="g" onclick="renStu('${esc(x.mssv)}')">Sửa tên</button> <button class="g" onclick="delStu('${esc(x.mssv)}')">Xóa</button></td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có sinh viên nào.</p>'}</div>
+  <div class="card"><h2 style="margin-top:0">Sinh viên đã đăng ký (${A.students.length})</h2>${A.students.length?`<div style="max-height:320px;overflow:auto"><table><tr><th>MSSV</th><th style="text-align:left">Họ tên</th><th></th></tr>${A.students.map(x=>`<tr><td>${esc(x.mssv)}</td><td style="text-align:left">${esc(x.name)}</td><td><button class="g" onclick="renStu('${esc(x.mssv)}')">Sửa tên</button> <button class="g" onclick="voidStu('${esc(x.mssv)}')">Hủy điểm</button> <button class="g" onclick="delStu('${esc(x.mssv)}')">Xóa</button></td></tr>`).join('')}</table></div>`:'<p class="mu">Chưa có sinh viên nào.</p>'}</div>
   <div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Kết quả các cặp đã thi</h2><button class="g" onclick="csv()">Xuất CSV</button></div>
   ${H.length?`<table><tr><th>Cặp thi</th><th>Điểm</th><th>WPM</th><th>Chính xác</th><th>Thắng</th><th></th></tr>${H.map(h=>{const[a,b]=h.players;return`<tr><td>${esc(a.name)} (${esc(a.mssv)}) vs ${esc(b.name)} (${esc(b.mssv)})</td><td>${a.score} – ${b.score}</td><td>${a.wpm} – ${b.wpm}</td><td>${a.acc}% – ${b.acc}%</td><td>${h.winner<0?'Hòa':esc(h.players[h.winner].name)}</td><td><button class="g" onclick="celH(${A.history.indexOf(h)})">🎉</button></td></tr>`}).join('')}</table>`:'<p class="mu">Chưa có kết quả.</p>'}</div>`;
 }

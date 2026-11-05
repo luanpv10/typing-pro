@@ -59,7 +59,7 @@ button.b2{background:#0a7cd6;color:#fff}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get(k){try{return localStorage.getItem(k)||''}catch(e){return''}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
-let TL={},CHEAT='',wantAdmin=false,lbFrom='home',CA=null,CR=null,clsSel='',wantCls=false,clsCode='',ctm=null,cval='',SP=null,celId=null,celRAF=0,LBD=null,lbDur=2,ws,S=null,view='home',name=LS.get('tp_name'),mssv=LS.get('tp_mssv'),dur=2,err='',A=null,ta=null,focused=false;
+let PRES=null,olq='',olg='',lastPg='',TL={},CHEAT='',wantAdmin=false,lbFrom='home',CA=null,CR=null,clsSel='',wantCls=false,clsCode='',ctm=null,cval='',SP=null,celId=null,celRAF=0,LBD=null,lbDur=2,ws,S=null,view='home',name=LS.get('tp_name'),mssv=LS.get('tp_mssv'),dur=2,err='',A=null,ta=null,focused=false;
 
 function setOnl(n){const e=$('#onl');if(e)e.textContent=n==null?'–':n}
 function connect(){
@@ -70,7 +70,7 @@ function connect(){
 }
 const tx=o=>ws.readyState===1&&ws.send(JSON.stringify(o));
 function on(m){
-  if(m.t==='hello'){dur=m.duration;setOnl(m.online);const tk=ck('tp_staff');if(tk)tx({t:'resume',token:tk});if(view==='home')render()}
+  if(m.t==='hello'){lastPg=view;tx({t:'page',v:view});dur=m.duration;setOnl(m.online);const tk=ck('tp_staff');if(tk)tx({t:'resume',token:tk});if(view==='home')render()}
   else if(m.t==='state'){if(m.cls&&!m.text&&S&&S.cls&&S.text&&S.cls.code===m.cls.code)m.text=S.text;S=m;S.t0=performance.now();view=m.status==='waiting'?'wait':'game';render()}
   else if(m.t==='clsadmin'){CA=m;CA.t0=performance.now();
     if(wantCls){wantCls=false;view='cls';render()}else if(view==='cls')updCls();
@@ -84,6 +84,7 @@ function on(m){
   else if(m.t==='aborted'){err='Đối thủ đã thoát trước khi bắt đầu.';reset()}
   else if(m.t==='adminfail'){wantAdmin=false;alert('Sai mật khẩu giám thị')}
   else if(m.t==='online')setOnl(m.n)
+  else if(m.t==='presence'){PRES=m.list;if(view==='online')updOnline()}
   else if(m.t==='stafftoken'){setCk('tp_staff',m.token,43200)}
   else if(m.t==='resumefail'){setCk('tp_staff','',0)}
   else if(m.t==='cheat'){CHEAT=m.reason||'bất thường';if(ta)ta.disabled=true;if(view==='game')update()}
@@ -113,11 +114,31 @@ function joinClass(){
 function adminLogin(){const p=prompt('Mật khẩu giám thị:');if(p){wantAdmin=true;tx({t:'admin',pass:p})}}
 function ck(n){const m=(document.cookie||'').match(new RegExp('(?:^|; )'+n+'=([^;]*)'));return m?decodeURIComponent(m[1]):''}
 function setCk(n,v,age){document.cookie=n+'='+encodeURIComponent(v)+'; Max-Age='+age+'; Path=/; SameSite=Strict'+(location.protocol==='https:'?'; Secure':'')}
+function openOnline(){view='online';PRES=null;tx({t:'presub',on:true});render()}
+function closeOnline(){tx({t:'presub',on:false});view='admin';render()}
+function onlineView(a){
+  const g={'':'Tất cả',exam:'Đang thi',wait:'Đang chờ',done:'Vừa thi xong',browse:'Trang chủ / xem bảng xếp hạng',staff:'Giám thị'};
+  a.innerHTML=`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">👥 Người đang online</h2><span class="mu" id="olc"></span></div>
+  <div id="ols" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"></div>
+  <div class="row"><input id="olq" placeholder="Tìm theo tên hoặc MSSV…" value="${esc(olq)}" oninput="olq=this.value;updOnline()" style="flex:1;min-width:180px"><select id="olg" onchange="olg=this.value;updOnline()" style="width:auto">${Object.entries(g).map(([k,v])=>`<option value="${k}" ${k===olg?'selected':''}>${v}</option>`).join('')}</select></div>
+  <div id="olt" style="overflow-x:auto;margin-top:10px"></div></div>`;
+  updOnline();
+}
+function updOnline(){
+  const t=$('#olt');if(!t)return;
+  if(!PRES){t.innerHTML='<p class="mu">Đang tải…</p>';return}
+  const cnt=k=>PRES.filter(x=>x.grp===k).length,q=olq.trim().toLowerCase();
+  $('#olc').textContent='Tổng: '+PRES.length+' kết nối';
+  $('#ols').innerHTML=[['Đang thi','exam'],['Đang chờ','wait'],['Vừa thi xong','done'],['Trang chủ / BXH','browse'],['Giám thị','staff']].map(([l,k])=>`<span class="tag" style="padding:4px 10px;font-size:13px">${l}: <b>${cnt(k)}</b></span>`).join('');
+  const L=PRES.filter(x=>(!olg||x.grp===olg)&&(!q||(x.name+' '+x.mssv).toLowerCase().includes(q))),now=Date.now();
+  t.innerHTML=L.length?`<table><tr><th style="text-align:left">Họ tên</th><th>MSSV</th><th style="text-align:left">Đang làm gì / ở trang nào</th><th>Trạng thái</th><th>Tiến độ</th><th>Online từ</th><th></th></tr>${L.map(x=>`<tr><td style="text-align:left">${esc(x.name)}</td><td>${esc(x.mssv)}</td><td style="text-align:left">${esc(x.act)}</td><td>${esc(x.st)}</td><td>${x.prog>=0?x.prog+'% · '+x.wpm+' WPM':''}</td><td>${new Date(x.since).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}</td><td style="text-align:left">${x.cheat?'🚩 '+esc(x.cheat):x.warn?'⚠ '+esc(x.warn):''}</td></tr>`).join('')}</table>`:'<p class="mu">Không có ai khớp bộ lọc.</p>';
+}
 function openStaff(){view='admin';render()}
-function staffLogout(){DR=null;tx({t:'stafflogout'});setCk('tp_staff','',0);A=null;CA=null;wantAdmin=false;if(view==='admin'||view==='cls'||view==='spec')view='home';closeCel();render()}
+function staffLogout(){if(view==='online')tx({t:'presub',on:false});DR=null;tx({t:'stafflogout'});setCk('tp_staff','',0);A=null;CA=null;wantAdmin=false;if(view==='admin'||view==='cls'||view==='spec'||view==='online')view='home';closeCel();render()}
 function goHome(){ // về trang chủ nhưng KHÔNG thoát giám thị
   if(view==='game'||view==='wait'){if(S&&S.status==='running'&&!confirm('Thoát khỏi bài thi? Bạn sẽ không được tính điểm.'))return;return leave()}
   if(view==='spec')tx({t:'unwatch'});
+  if(view==='online')tx({t:'presub',on:false});
   closeCel();view='home';render();
 }
 function endSolo(){
@@ -127,10 +148,11 @@ function endSolo(){
 function leaveSolo(){if(!S||S.status==='running'){if(!confirm('Thoát khỏi bài thi? Bạn sẽ không được tính điểm.'))return}leave()}
 
 function setNav(){
-  $('#nav').innerHTML=view==='home'?'<button class="g" onclick="openLB()">🏆 Bảng xếp hạng</button> '+(A?'<button onclick="openStaff()">🛠 Khu giám thị'+(A.role===2?' (lớp)':'')+'</button> <button class="g" onclick="staffLogout()">Đăng xuất</button>':'<button class="g" onclick="adminLogin()">🛠 Giám thị</button>'):view==='spec'?'<button class="g" onclick="stopWatch()">← Quay lại</button>':view==='cls'?'<button class="g" onclick="view=\'admin\';render()">← Giám thị</button>':view==='admin'?'<button class="g" onclick="goHome()">← Trang chủ</button> <button class="g" onclick="staffLogout()">Đăng xuất</button>':view==='lb'?'<button class="g" onclick="backFromLB()">← Quay lại</button>':'';
+  $('#nav').innerHTML=view==='home'?'<button class="g" onclick="openLB()">🏆 Bảng xếp hạng</button> '+(A?'<button onclick="openStaff()">🛠 Khu giám thị'+(A.role===2?' (lớp)':'')+'</button> <button class="g" onclick="staffLogout()">Đăng xuất</button>':'<button class="g" onclick="adminLogin()">🛠 Giám thị</button>'):view==='spec'?'<button class="g" onclick="stopWatch()">← Quay lại</button>':view==='online'?'<button class="g" onclick="closeOnline()">← Giám thị</button>':view==='cls'?'<button class="g" onclick="view=\'admin\';render()">← Giám thị</button>':view==='admin'?'<button class="g" onclick="goHome()">← Trang chủ</button> <button class="g" onclick="staffLogout()">Đăng xuất</button>':view==='lb'?'<button class="g" onclick="backFromLB()">← Quay lại</button>':'';
 }
 function render(){
   const a=$('#app');fitTxt();
+  if(ws&&view!==lastPg){lastPg=view;tx({t:'page',v:view})}
   setNav();
   if(view==='home')a.innerHTML=`<div class="card"><h2 style="margin-top:0">Thi gõ đối kháng 1–1</h2>
   <p class="mu">Hai người vào cùng một phòng, gõ cùng một đoạn tiếng Việt. Điểm = tốc độ (WPM) × độ chính xác². Chấm theo từng từ: chỉ từ gõ đúng hoàn toàn mới được tính tốc độ, và gõ sai một từ không ảnh hưởng các từ sau. Thi đối kháng: <b>${dur} phút</b>; thi một mình: tự chọn 1–5 phút (mặc định 2).<br>MSSV là duy nhất, dùng để định danh bạn và lưu điểm cao nhất. Lần đầu nhập sẽ đăng ký họ tên cho MSSV đó; các lần sau phải nhập đúng họ tên.</p>
@@ -147,6 +169,7 @@ function render(){
   else if(view==='admin')adminView(a);
   else if(view==='lb')lbView(a);
   else if(view==='cls')clsView(a);
+  else if(view==='online')onlineView(a);
   else if(view==='spec')a.innerHTML='<div id="sp"></div><div class="row" style="justify-content:center;margin-top:14px"><button id="cb" onclick="celebrateSP()" style="display:none">🎉 Tung hô người thắng</button></div>',updSpec();
 }
 function build(a){
@@ -367,6 +390,7 @@ function adminView(a){if(A.role===2)return procView(a);
   const H=A.history.slice().reverse();
   a.innerHTML=`${A.persist?'<div class="card" style="border-color:var(--ok)">✅ Dữ liệu được lưu vĩnh viễn trên cơ sở dữ liệu.</div>':'<div class="card" style="border-color:var(--bad)">⚠️ Chưa kết nối cơ sở dữ liệu: dữ liệu sẽ MẤT khi server khởi động lại. Xem README để cấu hình Upstash (miễn phí).</div>'}${cfgCard()}
   <div class="card"><h2 style="margin-top:0">Phòng đang hoạt động</h2>${A.live.length?`<table>${A.live.map(r=>`<tr><td>${r.names.map(esc).join(' vs ')||'…'}</td><td>${{waiting:'Đang chờ',countdown:'Chuẩn bị',running:'Đang thi'}[r.status]||r.status}</td><td><button class="g" onclick="watch(${r.id})">👁 Theo dõi</button></td></tr>`).join('')}</table>`:'<p class="mu">Không có phòng nào.</p>'}</div>
+  <div class="card"><div class="row" style="justify-content:space-between"><div><h2 style="margin:0">👥 Người đang online</h2><span class="mu">Xem ai đang online, đang thi gì hoặc đang ở trang nào (cập nhật mỗi 3 giây).</span></div><button onclick="openOnline()">Xem danh sách</button></div></div>
   ${admClsCard()}
   <div class="card"><h2 style="margin-top:0">Quản lý dữ liệu</h2>
   <div class="row"><select id="rd" style="max-width:130px">${[1,2,3,4,5].map(m=>`<option value="${m}">${m} phút</option>`).join('')}</select><button class="g" onclick="resetLBd()">Xóa bảng xếp hạng mốc này</button><button class="g" onclick="resetLB()">Xóa toàn bộ bảng xếp hạng</button><button class="g" onclick="resetHist()">Xóa lịch sử trận đấu</button><button class="g" onclick="resetSess()">Xóa thống kê thi theo lớp</button></div>
